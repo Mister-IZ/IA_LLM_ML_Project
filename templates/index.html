@@ -307,6 +307,15 @@
 
         // Focus sur l'input au chargement
         messageInput.focus();
+
+        // Fonction globale pour ouvrir/fermer les détails des événements
+        window.toggleEvent = function(element) {
+            document.querySelectorAll('.event-item.active').forEach(item => {
+                if (item !== element) item.classList.remove('active');
+            });
+            
+            element.classList.toggle('active');
+        }
     </script>
 </body>
 </html>

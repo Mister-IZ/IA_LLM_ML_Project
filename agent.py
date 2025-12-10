@@ -181,33 +181,32 @@ class SocialAgentLangChain:
         self.memory.clear()
     
     def _format_response_to_html(self, response: str) -> str:
-        """Convertit la réponse de l'agent en HTML stylisé"""
+        """Convertit la réponse de l'agent en HTML stylisé avec accordéon (Version Corrigée URL)"""
         if not response:
             return "<p>Aucune réponse générée.</p>"
         
-        # Nettoyage initial
+        if 'suggestion-btn' in response:
+             return self._inject_css() + '\n<div class="response-content">\n' + response + '\n</div>'
+
         cleaned = response.replace('```html', '').replace('```', '')
         
-        if '<' in cleaned and '>' in cleaned and not '<div class="section">' in cleaned:
-             # C'est déjà du HTML mais peut-être pas notre format structuré
-             pass
-        
-        # Conversion markdown/texte vers HTML structuré
         html_parts = []
         lines = cleaned.split('\n')
         current_section = []
         in_list = False
         list_items = []
+        current_hidden_info = [] 
         
-        # Si la réponse contient déjà nos boutons HTML, on ne veut pas trop y toucher
-        if 'suggestion-btn' in cleaned:
-            return self._inject_css() + '\n<div class="response-content">\n' + cleaned + '\n</div>'
-
         for i, line in enumerate(lines):
             line = line.strip()
             
-            # Titres avec émojis
+            # --- GESTION DES TITRES ---
             if line.startswith('🎯') or line.startswith('📌') or line.startswith('🌟'):
+                if list_items:
+                    html_parts.append('<ul class="event-list">' + ''.join(list_items) + '</ul>')
+                    list_items = []
+                    in_list = False
+                
                 if current_section:
                     html_parts.append(f'<div class="section">{" ".join(current_section)}</div>')
                     current_section = []
@@ -220,84 +219,103 @@ class SocialAgentLangChain:
                     html_parts.append(f'<h3 class="section-highlight">{line}</h3>')
                 continue
             
-            # Lignes de séparation
-            elif '─' in line and len(line) > 20:
-                html_parts.append('<div class="separator"></div>')
-                continue
+            elif '─' in line and len(line) > 10:
+                continue 
             
-            # Événements avec numérotation
+            # --- DÉBUT D'UN ÉVÉNEMENT ---
             elif re.match(r'^\d+\.\s+\*\*', line) or re.match(r'^\d+\.\s+[A-Z]', line):
                 if list_items:
-                    html_parts.append('<ul class="event-list">' + ''.join(list_items) + '</ul>')
-                    list_items = []
+                    if current_hidden_info:
+                        list_items[-1] += f'<div class="more-info">{"".join(current_hidden_info)}</div>'
+                        current_hidden_info = []
+                    list_items[-1] += '<div class="click-hint">🔽 Cliquez pour voir les détails</div></li>'
+                
+                if not in_list:
+                    if current_section:
+                        html_parts.append(f'<div class="section">{" ".join(current_section)}</div>')
+                        current_section = []
                 
                 content = re.sub(r'^\d+\.\s+', '', line)
                 content = content.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
-                list_items.append(f'<li class="event-item">{content}')
+                list_items.append(f'<li class="event-item" onclick="toggleEvent(this)">{content}')
                 in_list = True
                 continue
             
-            # Informations d'événement
-            elif in_list and (line.startswith('📅') or line.startswith('📍') or 
-                            line.startswith('💰') or line.startswith('🔗') or 
-                            line.startswith('🎟️') or line.startswith('🆓')):
-                if 'http' in line:
-                    url_match = re.search(r'(https?://[^\s]+)', line)
-                    if url_match:
-                        url = url_match.group(1)
-                        line = line.replace(url, f'<a href="{url}" target="_blank">{url}</a>')
+            # --- DÉTAILS DE L'ÉVÉNEMENT ---
+            elif in_list:
+                # 1. Infos visibles (Date, Lieu, Prix)
+                if line.startswith('📅') or line.startswith('📍') or line.startswith('💰') or line.startswith('🆓'):
+                    list_items[-1] += f'<div class="event-detail">{line}</div>'
                 
-                list_items[-1] += f'<div class="event-detail">{line}</div>'
-                continue
-            
-            # Fin d'un événement
-            elif in_list and (line == '' or i == len(lines) - 1 or 
-                            re.match(r'^\d+\.', lines[i+1]) if i+1 < len(lines) else False):
-                if list_items:
-                    list_items[-1] += '</li>'
-                    if line == '' or i == len(lines) - 1:
-                        html_parts.append('<ul class="event-list">' + ''.join(list_items) + '</ul>')
-                        list_items = []
-                        in_list = False
-                continue
-            
+                # 2. Infos cachées (Lien) - CORRECTION ICI
+                elif line.startswith('🔗'):
+                    # Cas 1 : Lien Markdown [Texte](URL)
+                    md_match = re.search(r'\[(.*?)\]\((https?://[^\)]+)\)', line)
+                    if md_match:
+                        url = md_match.group(2)
+                        # On remplace tout par le bouton propre
+                        line = f'<a href="{url}" target="_blank">Voir le site officiel</a>'
+                    
+                    # Cas 2 : Lien Brut https://...
+                    elif 'http' in line:
+                        url_match = re.search(r'(https?://[^\s]+)', line)
+                        if url_match:
+                            url = url_match.group(1)
+                            line = f'<a href="{url}" target="_blank">Voir le site officiel</a>'
+                    
+                    current_hidden_info.append(f'<div class="event-detail link">{line}</div>')
+                
+                # 3. Description
+                elif line and not any(line.startswith(x) for x in ['1.', '2.', '3.', '4.']):
+                    current_hidden_info.append(f'<div class="event-description">{line}</div>')
+                
             elif line:
                 current_section.append(line)
+        
+        # --- FERMETURE ---
+        if list_items:
+            if current_hidden_info:
+                list_items[-1] += f'<div class="more-info">{"".join(current_hidden_info)}</div>'
+            list_items[-1] += '<div class="click-hint">🔽 Cliquez pour voir les détails</div></li>'
+            html_parts.append('<ul class="event-list">' + ''.join(list_items) + '</ul>')
         
         if current_section:
             html_parts.append(f'<div class="section">{" ".join(current_section)}</div>')
         
-        if list_items:
-            html_parts.append('<ul class="event-list">' + ''.join(list_items) + '</ul>')
-        
-        html_content = '\n'.join(html_parts)
-        
-        return self._inject_css() + '\n<div class="response-content">\n' + html_content + '\n</div>'
+        return self._inject_css() + '\n<div class="response-content">\n' + '\n'.join(html_parts) + '\n</div>'
 
     def _inject_css(self):
-        """Retourne le CSS nécessaire pour le formatage"""
+        """Retourne le CSS nécessaire pour le formatage interactif"""
         return """
         <style>
         .event-list { list-style: none; padding: 0; margin: 20px 0; }
         .event-item {
-            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+            background: white;
             border-left: 4px solid #007bff; padding: 20px; margin-bottom: 15px;
-            border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            transition: all 0.3s ease;
+            border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            cursor: pointer; /* Indique qu'on peut cliquer */
+            transition: all 0.2s ease;
         }
-        .event-item:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-left-color: #0056b3; }
+        .event-item:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); background-color: #f8f9fa; }
         .event-item strong { color: #2c3e50; font-size: 1.1em; display: block; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-        .event-detail { margin: 8px 0; padding-left: 10px; color: #555; line-height: 1.5; font-size: 0.95em; }
-        .event-detail a { color: #007bff; text-decoration: none; font-weight: 500; padding: 2px 5px; border-radius: 3px; background: rgba(0,123,255,0.1); }
-        .event-detail a:hover { background: rgba(0,123,255,0.2); text-decoration: underline; }
-        .section-title { color: #2c3e50; margin: 30px 0 15px 0; padding-bottom: 10px; border-bottom: 2px solid #007bff; font-size: 1.4em; }
-        .section-subtitle { color: #34495e; margin: 25px 0 12px 0; font-size: 1.2em; padding-left: 10px; border-left: 3px solid #28a745; }
-        .section-highlight { color: #d35400; margin: 20px 0 10px 0; font-size: 1.1em; background: rgba(241, 196, 15, 0.1); padding: 10px; border-radius: 5px; }
-        .separator { height: 1px; background: linear-gradient(90deg, transparent, #ddd, transparent); margin: 30px 0; }
-        .section { margin: 15px 0; line-height: 1.6; color: #444; font-size: 1em; padding: 15px; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        h2::before, h3::before { margin-right: 10px; font-size: 1.2em; }
         
-        /* Styles pour les boutons de suggestion */
+        .event-detail { margin: 5px 0; padding-left: 25px; color: #555; position: relative; }
+        .more-info { 
+            display: none; /* CACHÉ PAR DÉFAUT */
+            margin-top: 15px; 
+            padding-top: 15px; 
+            border-top: 1px dashed #ddd; 
+            animation: fadeIn 0.3s;
+        }
+        .event-item.active .more-info { display: block; /* VISIBLE QUAND ACTIF */ }
+        .event-item.active { border-left-color: #28a745; background-color: #fff; }
+        
+        .event-description { margin-top: 10px; font-style: italic; color: #444; line-height: 1.5; background: #f1f3f5; padding: 10px; border-radius: 5px; }
+        
+        .click-hint { font-size: 0.8em; color: #999; text-align: center; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .event-item.active .click-hint { display: none; }
+        
+        /* Boutons de suggestion */
         .suggestion-container { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; margin-bottom: 15px; }
         .suggestion-btn {
             background-color: white; border: 1px solid #007bff; color: #007bff;
@@ -305,6 +323,8 @@ class SocialAgentLangChain:
             transition: all 0.2s; font-weight: 500;
         }
         .suggestion-btn:hover { background-color: #007bff; color: white; transform: scale(1.05); }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
         </style>
         """
 
