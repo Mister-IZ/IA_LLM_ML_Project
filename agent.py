@@ -237,7 +237,10 @@ class SocialAgentLangChain:
                 
                 content = re.sub(r'^\d+\.\s+', '', line)
                 content = content.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
-                list_items.append(f'<li class="event-item" onclick="toggleEvent(this)">{content}')
+
+                like_btn = '<button class="like-btn" onclick="toggleLike(this, \'' + content.replace("'", "\\'") + '\')">❤️</button>'
+
+                list_items.append(f'<li class="event-item" onclick="toggleEvent(this)">{content} {like_btn}')
                 in_list = True
                 continue
             
@@ -314,6 +317,21 @@ class SocialAgentLangChain:
         
         .click-hint { font-size: 0.8em; color: #999; text-align: center; margin-top: 10px; text-transform: uppercase; letter-spacing: 1px; }
         .event-item.active .click-hint { display: none; }
+
+        .like-btn {
+            float: right;
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+            padding: 5px 8px;
+            transition: all 0.2s;
+            z-index: 10;
+            position: relative;
+        }
+        .like-btn:hover { transform: scale(1.2); background-color: #ffe6e6; border-color: #ff9999; }
+        .like-btn.liked { background-color: #ff4757; color: white; border-color: #ff4757; }
         
         /* Boutons de suggestion */
         .suggestion-container { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; margin-bottom: 15px; }
