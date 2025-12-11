@@ -76,48 +76,47 @@ def onboarding():
 
 @app.route('/like', methods=['POST'])
 def like_event():
-    """Gère le Like : Augmentation de la catégorie cible + Décroissance des autres (Decay)"""
+    """Gère le Like avec priorité à l'analyse sémantique du titre"""
     data = request.json
     text = data.get('text', '').lower()
-    # On récupère la catégorie envoyée par le frontend (plus fiable que le texte)
-    category_forced = data.get('category', None) 
+    category_forced = data.get('category', None) # Le contexte envoyé par le front (ex: Sport)
     
     cat_found = None
     
-    # 1. Identification de la catégorie
-    if category_forced and category_forced in user_profile["vector"]:
+    # --- 1. ANALYSE SÉMANTIQUE (PRIORITÉ ABSOLUE) ---
+    # Si le titre contient un mot-clé fort, on ignore le contexte de conversation
+    # Cela règle le problème : "Je suis dans Sport, il me propose un Musée, je like -> Ça doit être Art"
+    keywords = {
+        "Music": ['concert', 'musique', 'jazz', 'rock', 'playlist', 'chanson', 'orchestre', 'nits', 'soprano', 'sheila', 'calogero'],
+        "Sport": ['match', 'course', 'yoga', 'sport', 'ballon', 'stade', 'padel', 'fitness', 'training', 'karaté', 'zumba', 'badminton'],
+        "Cinema": ['film', 'cinéma', 'projection', 'théâtre', 'spectacle', 'court métrage', 'documentaire'],
+        "Art":    ['expo', 'musée', 'peinture', 'art', 'galerie', 'vernissage', 'beaux-arts', 'design'],
+        "Nature": ['balade', 'parc', 'fleur', 'plantes', 'jardin', 'forêt', 'bois']
+    }
+    
+    for cat, words in keywords.items():
+        if any(w in text for w in words):
+            cat_found = cat
+            break
+            
+    # --- 2. FALLBACK SUR LE CONTEXTE ---
+    # Si pas de mot-clé trouvé (ex: titre "Les Baronnes"), on fait confiance au contexte
+    if not cat_found and category_forced and category_forced in user_profile["vector"]:
         cat_found = category_forced
-    else:
-        # Fallback : détection par mots-clés si pas de catégorie fournie
-        keywords = {
-            "Music": ['concert', 'musique', 'jazz', 'rock', 'playlist'],
-            "Sport": ['match', 'course', 'yoga', 'sport', 'ballon', 'stade'],
-            "Cinema": ['film', 'cinéma', 'projection', 'théâtre', 'spectacle'],
-            "Art": ['expo', 'musée', 'peinture', 'art', 'galerie', 'vernissage'],
-            "Nature": ['balade', 'parc', 'fleur', 'plantes', 'jardin']
-        }
-        for cat, words in keywords.items():
-            if any(w in text for w in words):
-                cat_found = cat
-                break
     
     if cat_found:
-        # 2. LOGIQUE DE DYNAMISME & DECAY
-        
-        # A. Boost de la catégorie aimée (+0.25)
-        # On ne dépasse pas 1.0
+        # A. Boost (+0.25)
         user_profile["vector"][cat_found] = min(1.0, user_profile["vector"][cat_found] + 0.25)
         
-        # B. Decay (Décroissance) des autres catégories (-0.05)
-        # Cela permet au profil de changer radicalement si on change de comportement
+        # B. Decay (-0.05)
         decay_rate = 0.05
         for category in user_profile["vector"]:
             if category != cat_found:
                 current_val = user_profile["vector"][category]
-                if current_val > 0.1: # On garde un plancher minimal
+                if current_val > 0.1:
                     user_profile["vector"][category] = max(0.1, current_val - decay_rate)
         
-        # 3. Recalcul immédiat du voisin (Live Update)
+        # C. Recalcul Voisin
         new_neighbor = None
         if rec_engine:
             new_neighbor = rec_engine.find_similar_user(user_profile["vector"])
@@ -130,7 +129,7 @@ def like_event():
             "new_neighbor": new_neighbor
         })
         
-    return jsonify({"status": "ignored", "reason": "Catégorie non trouvée"})
+    return jsonify({"status": "ignored", "reason": "Catégorie indéterminée"})
 
 @app.route('/chat', methods=['POST'])
 def chat():

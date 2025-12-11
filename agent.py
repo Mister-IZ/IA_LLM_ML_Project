@@ -13,7 +13,7 @@ class SocialAgentLangChain:
     def __init__(self):
         self.llm = ChatMistralAI(
             model="mistral-small-latest",
-            temperature=0.3,
+            temperature=0.2,
             mistral_api_key=os.getenv("MISTRAL_API_KEY")
         )
         
@@ -52,17 +52,27 @@ class SocialAgentLangChain:
     📍 Lieu
     💰 Prix
     🔗 Lien
-    Description courte
+    Description de l'événement.(SANS INVENTER)
 
     [... Autres événements ...]
 
-    [SI INSTRUCTION ML REÇUE :]
+    [SI UNE INSTRUCTION ML EST PRÉSENTE, AJOUTE CES SECTIONS EN RESPECTANT LE MÊME FORMAT DE CARTE :]
     ───────────────
     🤖 SUGGESTION PERSONNALISÉE (Nom Profil)
-    (Choisis UN événement réel de la liste ci-dessus qui matche le profil)
+    1. **Nom de l'événement suggéré (Tiré de la liste ci-dessus)**
+    📅 Date
+    📍 Lieu
+    💰 Prix
+    🔗 Lien
+    Description : Explication de pourquoi ça matche le profil.
 
-    🎲 OSEZ LA NOUVEAUTÉ !
-    (Suggestion anti-routine)
+    🎲 OSEZ LA NOUVEAUTÉ ! Sortir de son cercle peut aussi faire du bien.
+    1. **Nom de l'activité (Tiré de la liste ou suggestion générique)**
+    📅 Date
+    📍 Lieu
+    💰 Prix
+    🔗 Lien
+    Description : Pourquoi ça change la routine.
     """
 
     def _setup_tools(self):
@@ -161,11 +171,16 @@ class SocialAgentLangChain:
 
         [INSTRUCTION ML : {system_instruction}]
 
-        RÉPONSE :
-        1. Liste les résultats trouvés.
-        2. SI tu as une instruction ML, ajoute les sections 🤖 SUGGESTION et 🎲 NOUVEAUTÉ à la fin.
-           -> Pour la SUGGESTION, choisis UN VRAI événement de la liste ci-dessus qui correspond au profil.
+        RÉPONSE ATTENDUE :
+        1. Liste les résultats trouvés sous forme de cartes.
+        2. SI INSTRUCTION ML : Ajoute les sections 🤖 SUGGESTION et 🎲 NOUVEAUTÉ.
+           ⚠️ IMPORTANT : Dans ces sections spéciales, NE FAIS PAS DE PHRASES. 
+           Recopie les détails de l'événement sous forme de carte (1. **Nom**...) pour que l'utilisateur puisse cliquer dessus
         """
+                # RÉPONSE :
+        # 1. Liste les résultats trouvés.
+        # 2. SI tu as une instruction ML, ajoute les sections 🤖 SUGGESTION et 🎲 NOUVEAUTÉ à la fin.
+        #    -> Pour la SUGGESTION, choisis UN VRAI événement de la liste ci-dessus qui correspond au profil.
 
         response = self.agent.run(final_prompt)
         return self._format_response_to_html(response, current_context_category)
