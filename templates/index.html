@@ -27,6 +27,30 @@
         .cat-btn { background: #f8f9fa; border: 2px solid #e9ecef; padding: 15px; border-radius: 12px; cursor: pointer; font-size: 1.1em; transition: all 0.2s; }
         .cat-btn:hover { border-color: #007bff; background: #f0f7ff; transform: translateY(-2px); }
         .cat-icon { font-size: 1.5em; display: block; margin-bottom: 5px; }
+
+        /* STYLES DU MENU D'ACCUEIL */
+        .main-menu-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .sub-menu-container { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; animation: fadeIn 0.3s; }
+        
+        .menu-btn {
+            padding: 12px; border-radius: 12px; border: none; cursor: pointer;
+            font-size: 0.95em; font-weight: 600; transition: all 0.2s;
+            text-align: left; display: flex; align-items: center; gap: 8px;
+        }
+        
+        /* Boutons Principaux */
+        .menu-btn.main { background: white; border: 2px solid #e9ecef; color: #2c3e50; }
+        .menu-btn.main:hover { border-color: #007bff; background: #f0f7ff; transform: translateY(-2px); }
+        
+        /* Boutons Sous-menus */
+        .menu-btn.sub { 
+            background: #007bff; color: white; padding: 8px 15px; border-radius: 20px; font-size: 0.9em; 
+            box-shadow: 0 2px 5px rgba(0,123,255,0.3);
+        }
+        .menu-btn.sub:hover { background: #0056b3; transform: scale(1.05); }
+        
+        /* Animation d'apparition */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
@@ -179,6 +203,54 @@
                     }
                 } catch(e) { console.error(e); }
             }
+        }
+        // --- LOGIQUE DU MENU PRINCIPAL ---
+        window.showSubMenu = function(category) {
+            const container = document.getElementById('sub-menu-container');
+            let html = '';
+            
+            // On définit les sous-boutons ici (correspondent à tes API tools.py)
+            if (category === 'music') {
+                html = `
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Rock')">🎸 Rock</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Jazz')">🎷 Jazz</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Rap')">🎤 Rap</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert Pop')">✨ Pop</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Musique Classique')">🎻 Classique</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Jam Session')">🎸 Jam / Pratique</button>
+                `;
+            } else if (category === 'culture') {
+                html = `
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Aller au Cinéma')">🎬 Cinéma</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Pièce de Théâtre')">🎭 Théâtre</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Visiter une Exposition')">🖼️ Expo / Musée</button>
+                `;
+            } else if (category === 'sport') {
+                html = `
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Aller voir un match')">🏟️ Voir un match</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Faire du Yoga')">🧘 Yoga</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Faire un footing ou balade')">🌳 Balade / Course</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Cours de Fitness')">💪 Fitness</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Jouer au Padel ou Tennis')">🎾 Padel / Tennis</button>
+                `;
+            } else if (category === 'social') {
+                html = `
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Manger au restaurant')">🍔 Gastronomie</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Faire un marché ou brocante')">🛍️ Marché / Brocante</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Participer à un atelier')">🛠️ Atelier / Stage</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Soirée ou Clubbing')">🎉 Soirée / Fête</button>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+
+        window.sendMenuChoice = function(text) {
+            // Remplit la barre de texte et envoie
+            messageInput.value = text;
+            sendMessage();
+            // Optionnel : on vide le menu après choix pour garder le chat propre
+            // document.getElementById('sub-menu-container').innerHTML = '';
         }
 
         // --- UTILS ---

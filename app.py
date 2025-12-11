@@ -30,49 +30,52 @@ def index():
 
 @app.route('/onboarding', methods=['POST'])
 def onboarding():
-    """Initialise le profil via les 3 choix de départ"""
     data = request.json
     choices = data.get('choices', [])
     
-    # 1. Reset du vecteur
+    # 1. Reset & Poids (Inchangé)
     user_profile["vector"] = {"Music": 0.1, "Sport": 0.1, "Cinema": 0.1, "Art": 0.1, "Nature": 0.1}
-    
-    # 2. Application des poids de départ (Forts pour définir une tendance immédiate)
     weights = [0.9, 0.6, 0.4]
     for i, category in enumerate(choices):
         if i < len(weights) and category in user_profile["vector"]:
             user_profile["vector"][category] = weights[i]
 
-    # 3. Calcul du premier voisin
+    # 2. ML & Message
     if rec_engine:
         neighbor = rec_engine.find_similar_user(user_profile["vector"])
         user_profile["neighbor"] = neighbor
-
-        welcome_prompt = f"""
-        L'utilisateur vient de finir son inscription. Son profil dominant est '{neighbor['matched_archetype']}'.
         
-        Rédige un message d'accueil qui respecte STRICTEMENT cette structure :
-
-        1. Commence EXACTEMENT par : "Merci d'avoir répondu à ces 3 petites questions, maintenant on se connaît un peu plus 😉"
+        # --- LE MESSAGE D'ACCUEIL AVEC MENU ---
+        # On ne demande plus au LLM de générer le texte, on met le tien pour être sûr du ton.
         
-        2. Enchaîne avec cette phrase (ou une variation très proche) : "Si vous avez atterri ici, c'est que vous cherchez à reconnecter avec votre ville. Mon but est de briser l'isolement en vous proposant des activités locales inclusives pour booster votre bien-être."
+        welcome_text = f"""
+        Merci d'avoir répondu à ces 3 petites questions, maintenant on vous connaît un peu plus 😉<br><br>
         
-        3. Termine par une phrase courte invitant à demander une activité (en lien avec son profil '{neighbor['matched_archetype']}').
+        Pour ton confort et afin que tu n'aies pas besoin de taper du texte, voici toutes les catégories d'activités que je peux te proposer. 
+        Fais ton choix par rapport à ce que tu veux faire ! Pour moi l'essentiel c'est que tu trouves quelque chose que tu aimes bien afin que ça te motive à sortir et à sociabiliser.<br><br>
         
-        Ne mets pas de titre, juste le texte.
+        Ne t'inquiète pas, au fur et à mesure on va de mieux en mieux se connaître de par les "like" que tu feras et je te proposerai toujours, parmi plusieurs activités, celle qui pour moi te va le mieux en fonction de ton profil.
+        A mes yeux, pour l'instant comme je n'ai pu t'évaluer que sur ton top 3, je te vois comme un <strong>{neighbor['matched_archetype']}</strong>.
+        <br><br>
+        <strong>👇 Qu'est-ce qui te ferait plaisir aujourd'hui ?</strong>
+        
+        <div class="main-menu-container">
+            <button class="menu-btn main" onclick="showSubMenu('music')">🎵 Musique & Concerts</button>
+            <button class="menu-btn main" onclick="showSubMenu('culture')">🎨 Culture & Sorties</button>
+            <button class="menu-btn main" onclick="showSubMenu('sport')">🏃 Sport & Bien-être</button>
+            <button class="menu-btn main" onclick="showSubMenu('social')">🍻 Social & Gastronomie</button>
+        </div>
+        <div id="sub-menu-container" class="sub-menu-container"></div>
         """
-        
-        # Message d'accueil
-        msg = agent.agent.run(welcome_prompt)
         
         return jsonify({
             "status": "success", 
             "vector": user_profile["vector"], 
             "neighbor": neighbor, 
-            "message": msg
+            "message": welcome_text
         })
     
-    return jsonify({"status": "error", "message": "ML Engine failure"})
+    return jsonify({"status": "error"})
 
 @app.route('/like', methods=['POST'])
 def like_event():

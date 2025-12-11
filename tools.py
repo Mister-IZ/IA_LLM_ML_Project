@@ -49,8 +49,8 @@ def get_brussels_events(category: str) -> str:
     url = "https://api.brussels:443/api/agenda/0.0.1/events"
     if mainCategory:
         url = "https://api.brussels:443/api/agenda/0.0.1/events/category"
-        params = {"mainCategory": mainCategory, "page": 1}
-
+        
+    params = {"mainCategory": mainCategory, "page": 1}
     bearer_token = os.getenv("BRUSSELS_API_BEARER_TOKEN")
     if not bearer_token:
         return "Erreur: Token Brussels API manquant"
