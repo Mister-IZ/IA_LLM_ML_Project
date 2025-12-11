@@ -9,56 +9,24 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; position: relative; }
         .header { background: #2c3e50; color: white; padding: 20px; text-align: center; }
-        .header h1 { margin-bottom: 10px; font-size: 24px; }
         .chat-container { height: 500px; overflow-y: auto; padding: 20px; background: #f8f9fa; }
-        .message { margin: 15px 0; padding: 12px 16px; border-radius: 15px; max-width: 80%; word-wrap: break-word; }
+        .message { margin: 15px 0; padding: 12px 16px; border-radius: 15px; max-width: 85%; word-wrap: break-word; }
         .user-message { background: #007bff; color: white; margin-left: auto; border-bottom-right-radius: 5px; }
-        .bot-message { background: #e9ecef; color: #333; margin-right: auto; border-bottom-left-radius: 5px; }
+        .bot-message { background: white; color: #333; margin-right: auto; border-bottom-left-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         .message-sender { font-weight: bold; margin-bottom: 5px; font-size: 12px; opacity: 0.8; }
         .input-container { padding: 20px; background: white; border-top: 1px solid #e9ecef; display: flex; gap: 10px; }
-        .message-input { flex: 1; padding: 12px 16px; border: 2px solid #e9ecef; border-radius: 25px; outline: none; font-size: 14px; }
-        .message-input:focus { border-color: #007bff; }
-        .send-button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-size: 14px; font-weight: bold; }
-        .send-button:hover { background: #0056b3; }
-        .send-button:disabled { background: #6c757d; cursor: not-allowed; }
-        .reset-button { background: #6c757d; color: white; border: none; padding: 12px 16px; border-radius: 25px; cursor: pointer; font-size: 14px; }
+        .message-input { flex: 1; padding: 12px 16px; border: 2px solid #e9ecef; border-radius: 25px; outline: none; }
+        .send-button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 25px; cursor: pointer; font-weight: bold; }
+        .reset-button { background: #6c757d; color: white; border: none; padding: 12px 16px; border-radius: 25px; cursor: pointer; }
         .typing-indicator { display: none; padding: 12px 16px; background: #e9ecef; border-radius: 15px; margin: 10px 0; font-style: italic; color: #666; }
-        
-        /* CSS SPÉCIFIQUE POUR L'ONBOARDING (MODALE) */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); z-index: 1000;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .modal-content {
-            background: white; width: 90%; max-width: 500px; padding: 30px;
-            border-radius: 20px; text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            animation: slideUp 0.5s ease;
-        }
-        .modal-title { color: #2c3e50; margin-bottom: 20px; font-size: 1.5em; }
-        .step-indicator { color: #007bff; font-weight: bold; margin-bottom: 15px; text-transform: uppercase; font-size: 0.9em; letter-spacing: 1px; }
+
+        /* ONBOARDING MODAL */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: white; width: 90%; max-width: 500px; padding: 30px; border-radius: 20px; text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
         .category-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 20px; }
-        .cat-btn {
-            background: #f8f9fa; border: 2px solid #e9ecef; padding: 15px;
-            border-radius: 12px; cursor: pointer; font-size: 1.1em;
-            transition: all 0.2s; color: #444; font-weight: 500;
-        }
+        .cat-btn { background: #f8f9fa; border: 2px solid #e9ecef; padding: 15px; border-radius: 12px; cursor: pointer; font-size: 1.1em; transition: all 0.2s; }
         .cat-btn:hover { border-color: #007bff; background: #f0f7ff; transform: translateY(-2px); }
-        .cat-btn.selected { background: #007bff; color: white; border-color: #007bff; }
         .cat-icon { font-size: 1.5em; display: block; margin-bottom: 5px; }
-
-        @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-
-        /* Pour les likes */
-        .like-btn { float: right; background: none; border: 1px solid #ddd; border-radius: 50%; cursor: pointer; font-size: 1.2em; padding: 5px 8px; transition: all 0.2s; z-index: 10; position: relative; margin-left: 10px; }
-        .like-btn:hover { transform: scale(1.2); background-color: #ffe6e6; border-color: #ff9999; }
-        .like-btn.liked { background-color: #ff4757; color: white; border-color: #ff4757; }
-        
-        /* Boutons de suggestion */
-        .suggestion-container { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; margin-bottom: 15px; }
-        .suggestion-btn { background-color: white; border: 1px solid #007bff; color: #007bff; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.9em; transition: all 0.2s; font-weight: 500; }
-        .suggestion-btn:hover { background-color: #007bff; color: white; transform: scale(1.05); }
     </style>
 </head>
 <body>
@@ -66,33 +34,25 @@
         <div class="modal-content">
             <h2 class="modal-title">👋 Faisons connaissance !</h2>
             <div id="onboardingStep1">
-                <p class="step-indicator">Étape 1/3</p>
-                <p>Quelle est votre catégorie d'activité <strong>préférée</strong> (Top 1) ?</p>
-                <div class="category-grid" id="grid1">
+                <p>Quelle est votre catégorie préférée (Top 1) ?</p>
+                <div class="category-grid">
                     <button class="cat-btn" onclick="selectCategory('Music', 1)"><span class="cat-icon">🎵</span>Musique</button>
                     <button class="cat-btn" onclick="selectCategory('Sport', 1)"><span class="cat-icon">🏃</span>Sport</button>
-                    <button class="cat-btn" onclick="selectCategory('Cinema', 1)"><span class="cat-icon">🎬</span>Cinéma/Théâtre</button>
-                    <button class="cat-btn" onclick="selectCategory('Art', 1)"><span class="cat-icon">🎨</span>Art & Culture</button>
-                    <button class="cat-btn" onclick="selectCategory('Nature', 1)"><span class="cat-icon">🌳</span>Nature/Chill</button>
+                    <button class="cat-btn" onclick="selectCategory('Cinema', 1)"><span class="cat-icon">🎬</span>Cinéma</button>
+                    <button class="cat-btn" onclick="selectCategory('Art', 1)"><span class="cat-icon">🎨</span>Art</button>
+                    <button class="cat-btn" onclick="selectCategory('Nature', 1)"><span class="cat-icon">🌳</span>Nature</button>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="container">
-        <div class="header">
-            <h1>🤖 Social Connection Agent</h1>
-            <p>Je vous aide à trouver des activités sociales à Bruxelles 🌟</p>
-        </div>
-        
-        <div class="chat-container" id="chatOutput">
-            </div>
-        
+        <div class="header"><h1>🤖 Social Connection Agent</h1></div>
+        <div class="chat-container" id="chatOutput"></div>
         <div class="typing-indicator" id="typingIndicator">🤖 Réflexion en cours...</div>
-        
         <div class="input-container">
             <input type="text" class="message-input" id="messageInput" placeholder="Tapez votre message ici..." autocomplete="off">
-            <button class="send-button" id="sendButton">Envoyer ✨</button>
+            <button class="send-button" id="sendButton">Envoyer</button>
             <button class="reset-button" id="resetButton">Effacer</button>
         </div>
     </div>
@@ -102,87 +62,50 @@
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
         const typingIndicator = document.getElementById('typingIndicator');
-        
-        // --- LOGIQUE ONBOARDING ---
+        const resetButton = document.getElementById('resetButton');
+
+        // --- ONBOARDING LOGIC ---
         let userChoices = [];
         const categories = ['Music', 'Sport', 'Cinema', 'Art', 'Nature'];
 
         function selectCategory(category, step) {
-            // Ajouter le choix
             userChoices.push(category);
-            
             const modalContent = document.querySelector('.modal-content');
             
             if (step < 3) {
-                // Préparer la prochaine étape
                 const nextStep = step + 1;
                 const remainingCats = categories.filter(c => !userChoices.includes(c));
-                
                 let buttonsHtml = '';
                 remainingCats.forEach(cat => {
-                    let icon = '';
-                    if(cat === 'Music') icon = '🎵';
-                    if(cat === 'Sport') icon = '🏃';
-                    if(cat === 'Cinema') icon = '🎬';
-                    if(cat === 'Art') icon = '🎨';
-                    if(cat === 'Nature') icon = '🌳';
-                    
+                    let icon = cat === 'Music' ? '🎵' : cat === 'Sport' ? '🏃' : cat === 'Cinema' ? '🎬' : cat === 'Art' ? '🎨' : '🌳';
                     buttonsHtml += `<button class="cat-btn" onclick="selectCategory('${cat}', ${nextStep})"><span class="cat-icon">${icon}</span>${cat}</button>`;
                 });
-
-                modalContent.innerHTML = `
-                    <h2 class="modal-title">👍 Excellent choix !</h2>
-                    <p class="step-indicator">Étape ${nextStep}/3</p>
-                    <p>Et votre <strong>${nextStep === 2 ? 'deuxième' : 'troisième'}</strong> choix ?</p>
-                    <div class="category-grid">${buttonsHtml}</div>
-                `;
+                modalContent.innerHTML = `<h2>👍 Top !</h2><p>Choix n°${nextStep} ?</p><div class="category-grid">${buttonsHtml}</div>`;
             } else {
-                // FINI !
                 finishOnboarding();
             }
         }
 
         async function finishOnboarding() {
-            document.querySelector('.modal-content').innerHTML = `
-                <h2 class="modal-title">🤖 Analyse en cours...</h2>
-                <p>Je construis votre profil social et je cherche des correspondances...</p>
-            `;
-            
+            document.querySelector('.modal-content').innerHTML = `<h2>🧠 Calibrage...</h2>`;
             try {
                 const response = await fetch('/onboarding', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ choices: userChoices })
                 });
-                
                 const data = await response.json();
-                
-                // --- DÉMONSTRATION ML (LOG CONSOLE) ---
-                console.group("%c 🧠 DEBUG MACHINE LEARNING ", "color: white; background: #2c3e50; font-size: 14px; padding: 5px;");
-                console.log("1. Choix Utilisateur :", userChoices);
-                console.log("2. Vecteur Généré :", data.vector);
-                console.log("3. %c VOISIN TROUVÉ (Nearest Neighbor) ", "color: #00b894; font-weight: bold;", data.neighbor);
-                console.groupEnd();
-                // --------------------------------------
-
-                // Fermer la modale
+                console.log("INITIAL VECTOR:", data.vector);
                 document.getElementById('onboardingModal').style.display = 'none';
-                
-                // Afficher le message d'accueil de l'agent
                 addMessage(data.message);
-
-            } catch (error) {
-                console.error("Erreur onboarding:", error);
-                document.getElementById('onboardingModal').style.display = 'none';
-                addMessage("Bonjour ! Je suis prêt à vous aider, même sans profil précis.");
-            }
+            } catch (error) { document.getElementById('onboardingModal').style.display = 'none'; }
         }
 
-        // --- FONCTIONS DE CHAT CLASSIQUES ---
+        // --- CHAT LOGIC ---
         function addMessage(message, isUser = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-            messageDiv.innerHTML = `<div class="message-sender">${isUser ? '👤 Vous' : '🤖 Agent Social'}</div><div>${message.replace(/\n/g, '<br>')}</div>`;
+            messageDiv.innerHTML = `<div class="message-sender">${isUser ? 'Vous' : 'Agent'}</div>${message}`;
             chatOutput.appendChild(messageDiv);
             chatOutput.scrollTop = chatOutput.scrollHeight;
         }
@@ -193,7 +116,6 @@
             addMessage(message, true);
             messageInput.value = '';
             typingIndicator.style.display = 'block';
-            
             try {
                 const response = await fetch('/chat', {
                     method: 'POST',
@@ -203,55 +125,51 @@
                 const data = await response.json();
                 typingIndicator.style.display = 'none';
                 addMessage(data.response);
-            } catch (error) {
-                typingIndicator.style.display = 'none';
-                addMessage('❌ Erreur de connexion.');
-            }
+            } catch (error) { typingIndicator.style.display = 'none'; addMessage('❌ Erreur.'); }
         }
 
-        // Gestion des Likes
-        window.toggleLike = async function(btn, textContent) {
+        // --- LIKE LOGIC (Avec Catégorie) ---
+        window.toggleLike = async function(btn, textContent, categoryContext) {
+            event.stopPropagation();
             btn.classList.toggle('liked');
             if(btn.classList.contains('liked')) {
-                // Animation simple
                 btn.innerHTML = '💖';
                 setTimeout(() => btn.innerHTML = '❤️', 1000);
                 
-                // Envoi au backend ML
-                console.log("❤️ J'aime : " + textContent);
+                console.log(`LIKE: ${textContent} [Catégorie: ${categoryContext}]`);
+                
                 try {
                     const response = await fetch('/like', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ text: textContent })
+                        body: JSON.stringify({ text: textContent, category: categoryContext })
                     });
                     const data = await response.json();
-                    
                     if(data.status === 'success') {
-                        console.group("%c ❤️ MISE À JOUR LIVE DU PROFIL ", "color: white; background: #e17055; font-size: 12px; padding: 5px;");
-                        console.log("Catégorie détectée :", data.updated_category);
-                        console.log("Nouveau Vecteur :", data.new_vector);
-                        if(data.new_neighbor) {
-                            console.log("%c NOUVEAU VOISIN :", "color: #00b894;", data.new_neighbor.matched_user_id, "(" + data.new_neighbor.matched_archetype + ")");
-                        }
+                        console.group("%c MISE À JOUR LIVE ", "background: #e17055; color: white;");
+                        console.log("Catégorie boostée:", data.updated_category);
+                        console.log("Nouveau Vecteur:", data.new_vector);
+                        if(data.new_neighbor) console.log("Nouveau Voisin:", data.new_neighbor.matched_archetype);
                         console.groupEnd();
                     }
                 } catch(e) { console.error(e); }
-            } else {
-                btn.innerHTML = '❤️'; // Un-like (non géré par le backend pour simplifier)
             }
         }
 
-        // Gestion des événements
-        sendButton.addEventListener('click', sendMessage);
-        messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+        // --- UTILS ---
+        window.toggleEvent = function(element) {
+            if (event.target.classList.contains('like-btn')) return;
+            element.classList.toggle('active');
+        }
         document.addEventListener('click', function(e) {
             if (e.target && e.target.classList.contains('suggestion-btn')) {
                 messageInput.value = e.target.getAttribute('data-text');
                 sendMessage();
             }
         });
-        window.toggleEvent = function(element) { element.classList.toggle('active'); }
+        sendButton.addEventListener('click', sendMessage);
+        resetButton.addEventListener('click', () => { fetch('/reset', {method:'POST'}); location.reload(); });
+        messageInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
     </script>
 </body>
 </html>

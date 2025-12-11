@@ -15,7 +15,8 @@ class SocialRecommender:
     def _load_and_train(self):
         """Charge le dataset et entraîne le modèle KNN"""
         if not os.path.exists(self.dataset_path):
-            raise FileNotFoundError(f"Le fichier {self.dataset_path} n'existe pas. Lancez generate_data.py d'abord.")
+            # Si le CSV n'existe pas, on lance une erreur explicite
+            raise FileNotFoundError(f"Le fichier {self.dataset_path} est introuvable. Lance 'generate_data.py' d'abord.")
             
         self.df = pd.read_csv(self.dataset_path)
         
@@ -25,38 +26,51 @@ class SocialRecommender:
         print("🤖 Modèle KNN entraîné sur", len(self.df), "utilisateurs fictifs.")
 
     def find_similar_user(self, user_preferences):
-        """
-        Prend un dictionnaire de préférences utilisateur, 
-        trouve le voisin le plus proche et retourne ses infos.
-        """
-        # Convertir les préférences en vecteur ordonné selon feature_columns
-        # Exemple input: {"Cinema": 1.0, "Sport": 0.5, ...}
+        """Trouve le voisin le plus proche (Profil Similaire)"""
+        # Conversion du vecteur dict -> list ordonnée
         query_vector = []
         for col in self.feature_columns:
             query_vector.append(user_preferences.get(col, 0.0))
         
-        # Reshape pour scikit-learn (1 ligne, N colonnes)
         query_vector = np.array(query_vector).reshape(1, -1)
         
-        # Trouver le voisin le plus proche
+        # Trouver le voisin
         distances, indices = self.model.kneighbors(query_vector)
         
         neighbor_idx = indices[0][0]
         neighbor_dist = distances[0][0]
-        
         neighbor_data = self.df.iloc[neighbor_idx]
         
         return {
             "matched_user_id": neighbor_data["User_ID"],
             "matched_archetype": neighbor_data["Archetype"],
-            "similarity_score": round(1 - neighbor_dist, 4), # Convertir distance en similarité (approx)
-            "recommended_activity": neighbor_data["Favorite_Event"],
-            "debug_vector": neighbor_data[self.feature_columns].to_dict()
+            "similarity_score": round(1 - neighbor_dist, 4),
+            "recommended_activity_type": neighbor_data["Favorite_Event"] 
+            # Note: On utilise ça comme "Type" d'activité, pas comme événement absolu
         }
 
-# Test rapide si on lance le fichier directement
-if __name__ == "__main__":
-    rec = SocialRecommender()
-    # Imaginons un user qui aime le cinéma et l'art
-    test_profile = {"Music": 0.1, "Sport": 0.0, "Cinema": 1.0, "Art": 0.8, "Nature": 0.2}
-    print("Résultat pour profil test :", rec.find_similar_user(test_profile))
+    def find_routine_breaker(self, user_preferences):
+        """
+        Trouve une activité 'Anti-Routine' basée sur la catégorie la plus faible de l'utilisateur.
+        """
+        # 1. Trouver la catégorie avec le score le plus bas
+        lowest_category = min(user_preferences, key=user_preferences.get)
+        
+        # 2. Trouver un profil dans le dataset qui est fort dans cette catégorie (> 0.7)
+        opposites = self.df[self.df[lowest_category] > 0.7]
+        
+        if opposites.empty:
+            # Fallback si personne n'est > 0.7
+            opposites = self.df[self.df[lowest_category] > 0.5]
+            
+        # 3. Choisir un user au hasard dans ces opposés
+        if not opposites.empty:
+            opposite_user = opposites.sample(1).iloc[0]
+            return {
+                "category": lowest_category,
+                "archetype": opposite_user["Archetype"],
+                "activity_type": opposite_user["Favorite_Event"],
+                "reason": f"Vous explorez peu la catégorie '{lowest_category}'"
+            }
+        
+        return None

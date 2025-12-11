@@ -1,7 +1,7 @@
 import os
 from flask import Flask, render_template, request, jsonify
 from agent import SocialAgentLangChain
-from recommender import SocialRecommender # On importe ton nouveau moteur
+from recommender import SocialRecommender
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -9,16 +9,16 @@ load_dotenv()
 app = Flask(__name__)
 agent = SocialAgentLangChain()
 
-# Initialisation du moteur de recommandation
+# Initialisation du moteur ML
 try:
     rec_engine = SocialRecommender()
-    print("✅ Moteur de recommandation chargé avec succès")
+    print("✅ Moteur ML chargé avec succès")
 except Exception as e:
-    print(f"⚠️ Erreur chargement recommandation: {e}")
+    print(f"⚠️ Attention : Moteur ML non chargé ({e})")
     rec_engine = None
 
-# --- ÉTAT GLOBAL UTILISATEUR (Pour la démo PoC) ---
-# Dans une vraie app, cela serait stocké en base de données ou session utilisateur
+# État utilisateur GLOBAL (Pour la démo uniquement)
+# Dans une vraie app, ce serait stocké par session utilisateur
 user_profile = {
     "vector": {"Music": 0.1, "Sport": 0.1, "Cinema": 0.1, "Art": 0.1, "Nature": 0.1},
     "neighbor": None
@@ -30,74 +30,80 @@ def index():
 
 @app.route('/onboarding', methods=['POST'])
 def onboarding():
-    """Reçoit les 3 préférences top de l'utilisateur et initialise le vecteur"""
+    """Initialise le profil via les 3 choix de départ"""
     data = request.json
-    choices = data.get('choices', []) # Ex: ['Cinema', 'Sport', 'Nature']
+    choices = data.get('choices', [])
     
-    # 1. Réinitialiser le vecteur avec un bruit de fond faible
+    # 1. Reset du vecteur
     user_profile["vector"] = {"Music": 0.1, "Sport": 0.1, "Cinema": 0.1, "Art": 0.1, "Nature": 0.1}
     
-    # 2. Appliquer les poids (Top 1 = fort, Top 3 = faible)
-    weights = [0.8, 0.5, 0.3] # Poids à ajouter
-    
+    # 2. Application des poids de départ (Forts pour définir une tendance immédiate)
+    weights = [0.9, 0.6, 0.4]
     for i, category in enumerate(choices):
         if i < len(weights) and category in user_profile["vector"]:
-            user_profile["vector"][category] += weights[i]
-            # On cap à 1.0 maximum
-            if user_profile["vector"][category] > 1.0: user_profile["vector"][category] = 1.0
-            
-    # 3. Trouver le voisin le plus proche (Machine Learning)
+            user_profile["vector"][category] = weights[i]
+
+    # 3. Calcul du premier voisin
     if rec_engine:
         neighbor = rec_engine.find_similar_user(user_profile["vector"])
         user_profile["neighbor"] = neighbor
         
-        # Petit message d'accueil personnalisé par l'agent
-        welcome_prompt = f"""
-        L'utilisateur vient de définir son profil.
-        Ses intérêts majeurs sont : {', '.join(choices)}.
-        Le profil similaire trouvé dans la base de données est : {neighbor['matched_user_id']} ({neighbor['matched_archetype']}).
-        Activité recommandée : {neighbor['recommended_activity']}.
-        
-        Fais une phrase d'accueil courte et chaleureuse (max 2 phrases) qui mentionne subtilement l'activité recommandée.
-        """
-        welcome_msg = agent.agent.run(welcome_prompt)
+        # Message d'accueil (généré par le LLM pour être naturel)
+        msg = agent.agent.run(f"L'utilisateur vient de s'inscrire. Son profil dominant est '{neighbor['matched_archetype']}'. Souhaite-lui la bienvenue courtement.")
         
         return jsonify({
             "status": "success", 
-            "vector": user_profile["vector"],
-            "neighbor": neighbor,
-            "message": welcome_msg
+            "vector": user_profile["vector"], 
+            "neighbor": neighbor, 
+            "message": msg
         })
     
-    return jsonify({"status": "error", "message": "Moteur ML non disponible"})
+    return jsonify({"status": "error", "message": "ML Engine failure"})
 
 @app.route('/like', methods=['POST'])
 def like_event():
-    """L'utilisateur a aimé un événement, on met à jour son vecteur"""
+    """Gère le Like : Augmentation de la catégorie cible + Décroissance des autres (Decay)"""
     data = request.json
-    text_content = data.get('text', '').lower()
+    text = data.get('text', '').lower()
+    # On récupère la catégorie envoyée par le frontend (plus fiable que le texte)
+    category_forced = data.get('category', None) 
     
-    # Détection basique de la catégorie de l'événement liké
-    category_found = None
-    keywords = {
-        "Music": ['concert', 'musique', 'jazz', 'rock', 'playlist', 'chant', 'karaoke'],
-        "Sport": ['match', 'course', 'yoga', 'sport', 'ballon', 'stade', 'marathon'],
-        "Cinema": ['film', 'cinéma', 'projection', 'théâtre', 'acteur', 'scène'],
-        "Art": ['expo', 'musée', 'peinture', 'art', 'galerie', 'vernissage', 'dessin'],
-        "Nature": ['balade', 'parc', 'fleur', 'plantes', 'jardin', 'forêt', 'écologie']
-    }
+    cat_found = None
     
-    for cat, words in keywords.items():
-        if any(w in text_content for w in words):
-            category_found = cat
-            break
+    # 1. Identification de la catégorie
+    if category_forced and category_forced in user_profile["vector"]:
+        cat_found = category_forced
+    else:
+        # Fallback : détection par mots-clés si pas de catégorie fournie
+        keywords = {
+            "Music": ['concert', 'musique', 'jazz', 'rock', 'playlist'],
+            "Sport": ['match', 'course', 'yoga', 'sport', 'ballon', 'stade'],
+            "Cinema": ['film', 'cinéma', 'projection', 'théâtre', 'spectacle'],
+            "Art": ['expo', 'musée', 'peinture', 'art', 'galerie', 'vernissage'],
+            "Nature": ['balade', 'parc', 'fleur', 'plantes', 'jardin']
+        }
+        for cat, words in keywords.items():
+            if any(w in text for w in words):
+                cat_found = cat
+                break
     
-    if category_found:
-        # On renforce cette catégorie
-        current_val = user_profile["vector"][category_found]
-        user_profile["vector"][category_found] = min(1.0, current_val + 0.15) # +15% d'intérêt
+    if cat_found:
+        # 2. LOGIQUE DE DYNAMISME & DECAY
         
-        # On recalcule le voisin
+        # A. Boost de la catégorie aimée (+0.25)
+        # On ne dépasse pas 1.0
+        user_profile["vector"][cat_found] = min(1.0, user_profile["vector"][cat_found] + 0.25)
+        
+        # B. Decay (Décroissance) des autres catégories (-0.05)
+        # Cela permet au profil de changer radicalement si on change de comportement
+        decay_rate = 0.05
+        for category in user_profile["vector"]:
+            if category != cat_found:
+                current_val = user_profile["vector"][category]
+                if current_val > 0.1: # On garde un plancher minimal
+                    user_profile["vector"][category] = max(0.1, current_val - decay_rate)
+        
+        # 3. Recalcul immédiat du voisin (Live Update)
         new_neighbor = None
         if rec_engine:
             new_neighbor = rec_engine.find_similar_user(user_profile["vector"])
@@ -105,45 +111,62 @@ def like_event():
             
         return jsonify({
             "status": "success",
-            "updated_category": category_found,
+            "updated_category": cat_found,
             "new_vector": user_profile["vector"],
             "new_neighbor": new_neighbor
         })
         
-    return jsonify({"status": "ignored", "message": "Catégorie non détectée"})
+    return jsonify({"status": "ignored", "reason": "Catégorie non trouvée"})
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    try:
-        user_message = request.json.get('message', '').strip()
-        if not user_message: return jsonify({'error': 'Message vide'}), 400
+    user_msg = request.json.get('message', '').strip()
+    if not user_msg: return jsonify({'error': 'Message vide'}), 400
+    
+    # Reset
+    if user_msg.lower() in ['reset', 'recommencer', 'nouveau']:
+        agent.reset_conversation()
+        return jsonify({'response': "Conversation réinitialisée !"})
+    
+    # --- PRÉPARATION DU CONTEXTE ML INVISIBLE ---
+    context_ml_instruction = ""
+    
+    if user_profile["neighbor"] and rec_engine:
+        n = user_profile["neighbor"]
         
-        # Reset simple
-        if user_message.lower() in ['reset', 'recommencer', 'nouveau']:
-            agent.reset_conversation()
-            return jsonify({'response': "Conversation réinitialisée !"})
-            
-        # On ajoute le contexte du voisin trouvé au prompt système de manière invisible
-        context_ml = ""
-        if user_profile["neighbor"]:
-            n = user_profile["neighbor"]
-            context_ml = f"""
-            [INFO ML: L'utilisateur ressemble au profil '{n['matched_archetype']}'. 
-            Activité favorite typique de ce profil : {n['recommended_activity']}. 
-            Essaie de pousser subtilement vers ce genre d'activités si pertinent.]
+        # 1. On cherche l'Anti-Routine
+        breaker = rec_engine.find_routine_breaker(user_profile["vector"])
+        breaker_text = ""
+        if breaker:
+            breaker_text = f"""
+            - AJOUTE UNE SECTION "🎲 OSEZ LA NOUVEAUTÉ !" À LA FIN.
+              L'utilisateur ne fait jamais de '{breaker['category']}'.
+              Suggère-lui d'essayer une activité de type '{breaker['category']}' (comme {breaker['activity_type']}).
+              Si tu as trouvé un VRAI événement de ce type dans ta recherche API, propose-le. Sinon fais une suggestion générique.
             """
-            # On injecte ça temporairement dans la mémoire ou le prompt
-            # Pour faire simple ici, on l'ajoute au message user
-            # (L'utilisateur ne le verra pas, mais l'agent oui)
-            response = agent.chat(user_message + context_ml)
-        else:
-            response = agent.chat(user_message)
+
+        # 2. On construit l'instruction Système
+        # IMPORTANT : On dit à l'agent de piocher dans les résultats API, pas d'inventer
+        context_ml_instruction = f"""
+        [SYSTEM_HIDDEN_INSTRUCTION:
+        Le profil ML de l'utilisateur est : '{n['matched_archetype']}'.
         
-        return jsonify({'response': response})
+        SI (et seulement si) tu trouves des événements via tes outils (Recherche) :
+        1. Affiche les résultats trouvés normalement.
+        2. AJOUTE UNE SECTION "🤖 SUGGESTION PERSONNALISÉE ({n['matched_archetype']})" À LA FIN.
+           -> Dans cette section, sélectionne UN événement parmi ceux que tu viens de trouver qui correspond le mieux à l'archétype '{n['matched_archetype']}'.
+           -> Explique pourquoi tu l'as choisi.
         
-    except Exception as e:
-        print(e)
-        return jsonify({'error': f'Erreur: {str(e)}'}), 500
+        {breaker_text}
+        
+        SI l'utilisateur dit juste "Bonjour" ou pose une question hors-sujet, IGNORE ces instructions ML.
+        ]
+        """
+    
+    # On envoie le message + l'instruction cachée à l'agent
+    response = agent.chat(user_msg + context_ml_instruction)
+    
+    return jsonify({'response': response})
 
 @app.route('/reset', methods=['POST'])
 def reset_chat():
