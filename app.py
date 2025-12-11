@@ -47,9 +47,23 @@ def onboarding():
     if rec_engine:
         neighbor = rec_engine.find_similar_user(user_profile["vector"])
         user_profile["neighbor"] = neighbor
+
+        welcome_prompt = f"""
+        L'utilisateur vient de finir son inscription. Son profil dominant est '{neighbor['matched_archetype']}'.
         
-        # Message d'accueil (généré par le LLM pour être naturel)
-        msg = agent.agent.run(f"L'utilisateur vient de s'inscrire. Son profil dominant est '{neighbor['matched_archetype']}'. Souhaite-lui la bienvenue courtement.")
+        Rédige un message d'accueil qui respecte STRICTEMENT cette structure :
+
+        1. Commence EXACTEMENT par : "Merci d'avoir répondu à ces 3 petites questions, maintenant on se connaît un peu plus 😉"
+        
+        2. Enchaîne avec cette phrase (ou une variation très proche) : "Si vous avez atterri ici, c'est que vous cherchez à reconnecter avec votre ville. Mon but est de briser l'isolement en vous proposant des activités locales inclusives pour booster votre bien-être."
+        
+        3. Termine par une phrase courte invitant à demander une activité (en lien avec son profil '{neighbor['matched_archetype']}').
+        
+        Ne mets pas de titre, juste le texte.
+        """
+        
+        # Message d'accueil
+        msg = agent.agent.run(welcome_prompt)
         
         return jsonify({
             "status": "success", 

@@ -95,7 +95,21 @@
                     body: JSON.stringify({ choices: userChoices })
                 });
                 const data = await response.json();
-                console.log("INITIAL VECTOR:", data.vector);
+                
+                // --- DEBUG DÉTAILLÉ INITIALISATION ---
+                console.group("%c 🧠 INIT MACHINE LEARNING ", "color: white; background: #2c3e50; font-size: 14px; padding: 5px;");
+                console.log("1. Choix Utilisateur :", userChoices);
+                console.log("2. Vecteur Généré :", data.vector);
+                if(data.neighbor) {
+                    console.log("%c 3. VOISIN TROUVÉ (Nearest Neighbor) ", "color: #00b894; font-weight: bold;");
+                    console.log("   -> ID Utilisateur Fictif :", data.neighbor.matched_user_id);
+                    console.log("   -> Archétype (Cluster)   :", data.neighbor.matched_archetype);
+                    console.log("   -> Score de Similarité   :", data.neighbor.similarity_score, "(Plus c'est proche de 1, mieux c'est)");
+                    console.log("   -> Activité Type         :", data.neighbor.recommended_activity_type);
+                }
+                console.groupEnd();
+                // -------------------------------------
+
                 document.getElementById('onboardingModal').style.display = 'none';
                 addMessage(data.message);
             } catch (error) { document.getElementById('onboardingModal').style.display = 'none'; }
@@ -128,7 +142,7 @@
             } catch (error) { typingIndicator.style.display = 'none'; addMessage('❌ Erreur.'); }
         }
 
-        // --- LIKE LOGIC (Avec Catégorie) ---
+        // --- LIKE LOGIC (Avec Logs Détaillés) ---
         window.toggleLike = async function(btn, textContent, categoryContext) {
             event.stopPropagation();
             btn.classList.toggle('liked');
@@ -136,7 +150,7 @@
                 btn.innerHTML = '💖';
                 setTimeout(() => btn.innerHTML = '❤️', 1000);
                 
-                console.log(`LIKE: ${textContent} [Catégorie: ${categoryContext}]`);
+                console.log(`ACTION UTILISATEUR: Like sur "${textContent}" [Catégorie: ${categoryContext}]`);
                 
                 try {
                     const response = await fetch('/like', {
@@ -145,12 +159,23 @@
                         body: JSON.stringify({ text: textContent, category: categoryContext })
                     });
                     const data = await response.json();
+                    
                     if(data.status === 'success') {
-                        console.group("%c MISE À JOUR LIVE ", "background: #e17055; color: white;");
-                        console.log("Catégorie boostée:", data.updated_category);
-                        console.log("Nouveau Vecteur:", data.new_vector);
-                        if(data.new_neighbor) console.log("Nouveau Voisin:", data.new_neighbor.matched_archetype);
+                        // --- DEBUG DÉTAILLÉ LIVE UPDATE ---
+                        console.group("%c ❤️ MISE À JOUR LIVE DU VECTEUR ", "background: #e17055; color: white; padding: 4px; font-size: 12px;");
+                        console.log("1. Catégorie boostée :", data.updated_category, "(+0.25)");
+                        console.log("2. Nouveau Vecteur   :", data.new_vector);
+                        
+                        if(data.new_neighbor) {
+                             console.log("%c 3. NOUVEAU VOISIN CALCULÉ ", "color: #ffeaa7; font-weight: bold;");
+                             console.log("   -> ID Voisin       :", data.new_neighbor.matched_user_id);
+                             console.log("   -> Archétype       :", data.new_neighbor.matched_archetype);
+                             console.log("   -> Score Similarité:", data.new_neighbor.similarity_score);
+                             // Petit log pour voir si ça bouge
+                             console.log("%c   (Preuve qu'on bouge: le score change même si l'archétype reste le même !)", "font-style: italic; color: #aaa;");
+                        }
                         console.groupEnd();
+                        // ----------------------------------
                     }
                 } catch(e) { console.error(e); }
             }
