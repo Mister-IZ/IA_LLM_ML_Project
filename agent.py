@@ -33,7 +33,16 @@ class SocialAgentLangChain:
             "current_page": 1,
             "all_events": [],
             "last_displayed_events": [],  # Événements formatés affichés
-            "last_ml_category": "General"
+            "last_ml_category": "General",
+            # Poids cumulés par catégorie détectée (remplace l'usage des likes)
+            "category_weights": {
+                "Cinema": 0,
+                "Sport": 0,
+                "Music": 0,
+                "Nature": 0,
+                "Art": 0,
+                "General": 0,
+            },
         }
         
         self.memory = ConversationBufferMemory(
@@ -139,7 +148,15 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
             "all_filtered_events": [],  # TOUS les événements filtrés (pour pagination locale)
             "last_displayed_events": [],  # Événements affichés sur la page actuelle
             "last_ml_category": "General",
-            "last_search_query": None
+            "last_search_query": None,
+            "category_weights": {
+                "Cinema": 0,
+                "Sport": 0,
+                "Music": 0,
+                "Nature": 0,
+                "Art": 0,
+                "General": 0,
+            },
         }
         self.memory.clear()
 
