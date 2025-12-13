@@ -245,55 +245,149 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
             raw_response = self.agent.run(user_message)
             return self._format_response_to_html(raw_response, current_context_category)
         
-        # 7. Mode Recherche avec ML
-        results = []
+        # # 7. Mode Recherche avec ML
+        # results = []
         
-        # Sauvegarder la recherche pour la pagination
+        # # Sauvegarder la recherche pour la pagination
+        # self.current_state["last_search_query"] = user_message
+        # self.current_state["filter_type"] = filter_type
+        # self.current_state["current_page"] = 1  # Reset page pour nouvelle recherche
+        
+        # print(f"[DEBUG] Nouvelle recherche: '{user_message}', filter_type: {filter_type}")
+        
+        # # Toujours essayer Brussels d'abord
+        # try:
+        #     result_text, ml_category, formatted_events, all_events = get_brussels_events_formatted_with_all(
+        #         user_message
+        #     )
+        #     if formatted_events:
+        #         results.append(result_text)
+        #         self.current_state["last_displayed_events"] = formatted_events
+        #         self.current_state["all_filtered_events"] = all_events  # STOCKER TOUS pour pagination locale
+        #         self.current_state["last_ml_category"] = ml_category
+        #         current_context_category = ml_category
+        #         print(f"[DEBUG] Stocké {len(all_events)} événements pour pagination locale")
+        # except Exception as e:
+        #     print(f"[DEBUG] Erreur Brussels: {e}")
+        #     import traceback
+        #     traceback.print_exc()
+        
+        # # Appel conditionnel Ticketmaster (concerts/sports)
+        # if any(x in msg_lower for x in ['concert', 'musique', 'music', 'sport', 'match']):
+        #     try:
+        #         result_tm = get_ticketmaster_events("Music" if 'concert' in msg_lower else "Sports")
+        #         if result_tm and "Aucun" not in result_tm:
+        #             results.append(result_tm)
+        #     except:
+        #         pass
+        
+        # content_found = "\n\n".join([r for r in results if r and "Aucun" not in r and "Erreur" not in r])
+        
+        # if not content_found:
+        #     return self._format_response_to_html(
+        #         f"❌ Aucune activité trouvée pour '{user_message}'.\n\n💡 Essaie une autre recherche !",
+        #         current_context_category
+        #     )
+        
+        # # 8. Ajouter les suggestions ML si présentes
+        # if system_instruction:
+        #     content_found = self._add_ml_suggestions(content_found, system_instruction, current_context_category)
+        
+        # return self._format_response_to_html(content_found, current_context_category)
+
+        # 7. Mode Recherche avec ML (Mise à jour pour Multi-API)
+        results_text = []
+        all_found_events = [] # Liste combinée pour le State
+        
+        # Sauvegarder la recherche
         self.current_state["last_search_query"] = user_message
         self.current_state["filter_type"] = filter_type
-        self.current_state["current_page"] = 1  # Reset page pour nouvelle recherche
+        self.current_state["current_page"] = 1
         
-        print(f"[DEBUG] Nouvelle recherche: '{user_message}', filter_type: {filter_type}")
+        print(f"[DEBUG] Nouvelle recherche Multi-API: '{user_message}'")
         
-        # Toujours essayer Brussels d'abord
+        # --- A. BRUSSELS API (Base culturelle) ---
         try:
-            result_text, ml_category, formatted_events, all_events = get_brussels_events_formatted_with_all(
-                user_message
-            )
-            if formatted_events:
-                results.append(result_text)
-                self.current_state["last_displayed_events"] = formatted_events
-                self.current_state["all_filtered_events"] = all_events  # STOCKER TOUS pour pagination locale
-                self.current_state["last_ml_category"] = ml_category
-                current_context_category = ml_category
-                print(f"[DEBUG] Stocké {len(all_events)} événements pour pagination locale")
+            br_text, ml_cat, br_events, _ = get_brussels_events_formatted_with_all(user_message, limit=5)
+            if br_events:
+                results_text.append(br_text)
+                all_found_events.extend(br_events)
+                self.current_state["last_ml_category"] = ml_cat
+                current_context_category = ml_cat
         except Exception as e:
             print(f"[DEBUG] Erreur Brussels: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        # Appel conditionnel Ticketmaster (concerts/sports)
-        if any(x in msg_lower for x in ['concert', 'musique', 'music', 'sport', 'match']):
+
+        # --- B. TICKETMASTER (Si pertinent pour musique/sport/spectacle) ---
+        # On l'appelle si c'est de la musique, du sport ou si la requête est générique
+        if any(kw in msg_lower for kw in ['concert', 'musique', 'music', 'sport', 'match', 'spectacle', 'show', 'voir', 'sortir']):
             try:
-                result_tm = get_ticketmaster_events("Music" if 'concert' in msg_lower else "Sports")
-                if result_tm and "Aucun" not in result_tm:
-                    results.append(result_tm)
-            except:
-                pass
+                # Déterminer catégorie TM
+                tm_cat = "Music"
+                if 'sport' in msg_lower or 'match' in msg_lower: tm_cat = "Sports"
+                elif 'art' in msg_lower or 'theatre' in msg_lower: tm_cat = "Arts & Theatre"
+                
+                tm_text, tm_events = get_ticketmaster_events(tm_cat)
+                
+                if tm_events:
+                    # On re-numérote la liste texte pour la suite
+                    start_num = len(all_found_events) + 1
+                    # Petit hack : on remplace les "1. ", "2. " du texte brut par la suite logique
+                    tm_lines = tm_text.split('\n')
+                    new_tm_text = ""
+                    local_count = 0
+                    for line in tm_lines:
+                        if re.match(r'^\d+\.', line): # C'est une ligne numérotée
+                            line = re.sub(r'^\d+\.', f"{start_num + local_count}.", line)
+                            local_count += 1
+                        new_tm_text += line + "\n"
+                    
+                    results_text.append(new_tm_text)
+                    all_found_events.extend(tm_events)
+            except Exception as e:
+                print(f"[DEBUG] Erreur Ticketmaster: {e}")
+
+        # --- C. EVENTBRITE (Si pertinent pour social/atelier/générique) ---
+        if any(kw in msg_lower for kw in ['atelier', 'social', 'rencontre', 'cours', 'apprendre', 'activité', 'gratuit', 'cherch', 'trouv']):
+            try:
+                eb_text, eb_events = get_eventbrite_events()
+                
+                if eb_events:
+                    start_num = len(all_found_events) + 1
+                    eb_lines = eb_text.split('\n')
+                    new_eb_text = ""
+                    local_count = 0
+                    for line in eb_lines:
+                        if re.match(r'^\d+\.', line):
+                            line = re.sub(r'^\d+\.', f"{start_num + local_count}.", line)
+                            local_count += 1
+                        new_eb_text += line + "\n"
+                        
+                    results_text.append(new_eb_text)
+                    all_found_events.extend(eb_events)
+            except Exception as e:
+                print(f"[DEBUG] Erreur EventBrite: {e}")
+
+        # --- FINALISATION ---
         
-        content_found = "\n\n".join([r for r in results if r and "Aucun" not in r and "Erreur" not in r])
-        
-        if not content_found:
-            return self._format_response_to_html(
-                f"❌ Aucune activité trouvée pour '{user_message}'.\n\n💡 Essaie une autre recherche !",
+        # S'il n'y a RIEN du tout
+        if not all_found_events:
+             return self._format_response_to_html(
+                f"❌ Désolé, je n'ai rien trouvé pour '{user_message}' sur aucune plateforme (Brussels, Ticketmaster, EventBrite).",
                 current_context_category
             )
+            
+        # Mise à jour du STATE GLOBAL (Crucial pour l'affichage HTML)
+        self.current_state["last_displayed_events"] = all_found_events[:8]  # Première page
+        self.current_state["all_filtered_events"] = all_found_events  # TOUS pour pagination locale
         
-        # 8. Ajouter les suggestions ML si présentes
+        # Combinaison du texte pour le LLM (ou affichage direct)
+        full_content = "\n\n".join(results_text)
+        
+        # Ajouter les suggestions ML si présentes
         if system_instruction:
-            content_found = self._add_ml_suggestions(content_found, system_instruction, current_context_category)
+            full_content = self._add_ml_suggestions(full_content, system_instruction, current_context_category)
         
-        return self._format_response_to_html(content_found, current_context_category)
+        return self._format_response_to_html(full_content, current_context_category)
 
     def _rebuild_list_from_state(self) -> str:
         """Reconstruit la liste à partir du state"""
@@ -579,7 +673,7 @@ RAISON: [ta phrase d'explication]"""
                 continue
             
             # Titres de section (TOUS les emojis de catégorie)
-            section_emojis = ['🎯', '📌', '🌟', '🤖', '🎲', '❌', '📭', '💬', '🔄', '🎬', '🎵', '🎨', '🏃', '🌳', '🍳', '🆓']
+            section_emojis = ['🎯', '📌', '🌟', '🤖', '🎲', '❌', '📭', '💬', '🔄', '🎬', '🎵', '🎨', '🏃', '🌳', '🍳', '🆓', '🎫', '🎭', '🌐']
             if any(line.startswith(x) for x in section_emojis):
                 if list_items:
                     if current_hidden_info:

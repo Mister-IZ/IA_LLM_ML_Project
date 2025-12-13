@@ -439,161 +439,194 @@ def get_brussels_events(category: str) -> str:
     return result
 
 
-# ========== TICKETMASTER API (Gardée simple) ==========
-def get_ticketmaster_events(category: str = "Music", genre_filter: str = None) -> str:
-    """Récupère les événements via Ticketmaster API"""
-    api_key = os.getenv("TICKETMASTER_API_KEY")
+# ========== TICKETMASTER API (Mise à jour structurée) ==========
+def get_ticketmaster_events(category: str = "Music") -> Tuple[str, List[Dict]]:
+    """
+    Récupère les événements Ticketmaster et retourne (Texte, Liste_Structurée)
+    """
+    api_key = os.getenv("TICKETMASTER_CONSUMER_KEY") # Attention au nom de la variable env dans ton .env
     if not api_key:
-        return "Erreur: Clé API Ticketmaster manquante"
+        api_key = os.getenv("TICKETMASTER_API_KEY") # Fallback
+    
+    if not api_key:
+        return "⚠️ Clé API Ticketmaster manquante.", []
     
     url = "https://app.ticketmaster.com/discovery/v2/events.json"
+    
+    # Mapping plus précis
+    classification_id = None
+    if category == "Sports": classification_id = "KZFzniwnSyZfZ7v7nE"
+    elif category == "Arts & Theatre": classification_id = "KZFzniwnSyZfZ7v7na"
+    elif category == "Film": classification_id = "KZFzniwnSyZfZ7v7nn"
+    else: classification_id = "KZFzniwnSyZfZ7v7nJ" # Music par défaut
+    
     params = {
         "apikey": api_key,
+        "city": "Brussels",
         "countryCode": "BE",
-        "size": 10,
-        "sort": "date,asc"
+        "size": 8, # On en prend moins pour laisser de la place aux autres
+        "sort": "date,asc",
+        "classificationId": classification_id
     }
     
-    # Mapping catégories
-    category_ids = {
-        "Music": "KZFzniwnSyZfZ7v7nJ",
-        "Sports": "KZFzniwnSyZfZ7v7nE",
-        "Arts & Theatre": "KZFzniwnSyZfZ7v7na",
-        "Film": "KZFzniwnSyZfZ7v7nn"
-    }
-    
-    if category in category_ids:
-        params["classificationId"] = category_ids[category]
+    formatted_events = []
+    text_result = ""
     
     try:
         response = requests.get(url, params=params)
-        response.raise_for_status()
         data = response.json()
         
-        if "_embedded" not in data or "events" not in data["_embedded"]:
-            return f"Aucun événement Ticketmaster trouvé pour {category}."
-        
-        events = data["_embedded"]["events"]
-        result = []
-        
-        # Déterminer la catégorie ML
-        ml_category = "Music"
-        if category == "Sports":
-            ml_category = "Sport"
-        elif category in ["Arts & Theatre", "Film"]:
-            ml_category = "Cinema"
-        
-        for i, event in enumerate(events[:8], 1):
-            name = event.get("name", "Événement")
+        if "_embedded" in data and "events" in data["_embedded"]:
+            events = data["_embedded"]["events"]
             
-            # Date
-            dates = event.get("dates", {}).get("start", {})
-            date_str = dates.get("localDate", "Date inconnue")
-            time_str = dates.get("localTime", "")
-            if time_str:
-                date_str = f"{date_str} à {time_str[:5]}"
+            # Déterminer la catégorie ML pour le taggage
+            ml_cat = "Sport" if category == "Sports" else "Cinema" if category in ["Film", "Arts & Theatre"] else "Music"
             
-            # Lieu
-            venue = event.get("_embedded", {}).get("venues", [{}])[0]
-            venue_name = venue.get("name", "Belgique")
-            city = venue.get("city", {}).get("name", "")
-            location = f"{venue_name}, {city}" if city else venue_name
+            text_result += f"🎫 **ÉVÉNEMENTS TICKETMASTER ({category}) :**\n\n"
             
-            # Prix
-            price_ranges = event.get("priceRanges", [])
-            if price_ranges:
-                min_p = price_ranges[0].get("min", "?")
-                max_p = price_ranges[0].get("max", "?")
-                price = f"💶 {min_p} - {max_p} EUR"
-            else:
-                price = "💶 Prix non communiqué"
-            
-            # URL
-            url = event.get("url", "")
-            
-            # Description
-            desc = event.get("info", "") or event.get("pleaseNote", "") or f"Concert de {name}"
-            if len(desc) > 150:
-                desc = desc[:150] + "..."
-            
-            result.append(f"{i}. **{name}**")
-            result.append(f"📅 {date_str}")
-            result.append(f"📍 {location}")
-            result.append(f"💰 {price}")
-            if url:
-                result.append(f"🔗 {url}")
-            result.append(f"Description: {desc}")
-            result.append(f"<!-- CATEGORY:{ml_category} -->")
-            result.append("")
-        
-        return "\n".join(result) if result else f"Aucun événement trouvé pour {category}."
-        
+            for i, event in enumerate(events, 1):
+                # Extraction propre
+                name = event.get("name", "Événement")
+                
+                # Date
+                dates = event.get("dates", {}).get("start", {})
+                date_str = dates.get("localDate", "Date inconnue")
+                if "localTime" in dates:
+                    date_str += f" à {dates['localTime'][:5]}"
+                
+                # Lieu
+                venue_info = event.get("_embedded", {}).get("venues", [{}])[0]
+                venue_name = venue_info.get("name", "Bruxelles")
+                
+                # Prix
+                price = "Prix non communiqué"
+                if "priceRanges" in event:
+                    min_p = event["priceRanges"][0].get("min")
+                    curr = event["priceRanges"][0].get("currency", "EUR")
+                    if min_p: price = f"💶 À partir de {min_p} {curr}"
+                
+                url = event.get("url", "")
+                
+                # Description (souvent vide chez TM, on prend info ou name)
+                desc = event.get("info") or event.get("pleaseNote") or f"Grand événement : {name}"
+                desc = desc[:200] + "..." if len(desc) > 200 else desc
+                
+                # Création objet structuré pour le State de l'agent
+                event_obj = {
+                    "title": name,
+                    "start_date": date_str,
+                    "location": venue_name,
+                    "price": price,
+                    "url": url,
+                    "description": desc,
+                    "full_description": desc,
+                    "source": "Ticketmaster"
+                }
+                formatted_events.append(event_obj)
+                
+                # Construction texte
+                text_result += f"{len(formatted_events)}. **{name}**\n"
+                text_result += f"📅 {date_str}\n"
+                text_result += f"📍 {venue_name}\n"
+                text_result += f"💰 {price}\n"
+                text_result += f"🔗 {url}\n"
+                text_result += f"Description: {desc}\n"
+                text_result += f"\n\n"
+
     except Exception as e:
-        return f"Erreur Ticketmaster: {e}"
+        print(f"Erreur Ticketmaster: {e}")
+        
+    return text_result, formatted_events
 
 
-# ========== EVENTBRITE API (Gardée simple) ==========
-def get_eventbrite_events() -> str:
-    """Récupère les événements via EventBrite API"""
-    api_key = os.getenv("EVENTBRITE_API_KEY")
-    if not api_key:
-        return "Erreur: Clé API EventBrite manquante"
+# ========== EVENTBRITE API (Mise à jour avec ta liste d'IDs) ==========
+def get_eventbrite_events() -> Tuple[str, List[Dict]]:
+    """
+    Récupère les événements EventBrite via Venue IDs et retourne (Texte, Liste_Structurée)
+    """
+    api_token = os.getenv("EVENTBRITE_PRIVATE_TOKEN")
+    if not api_token:
+        return "⚠️ Token EventBrite manquant.", []
     
-    url = "https://www.eventbriteapi.com/v3/events/search/"
-    headers = {"Authorization": f"Bearer {api_key}"}
-    params = {
-        "location.address": "Brussels, Belgium",
-        "location.within": "25km",
-        "expand": "venue",
-        "page_size": 10
-    }
+    # Ta liste d'IDs issue du notebook
+    venue_ids = ['295288568', '271238193', '278600043', '279838893', '290674563', 
+                 '294827703', '282508363', '295080090', '244133673', '277705833']
     
-    try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        data = response.json()
+    formatted_events = []
+    text_result = ""
+    
+    # On limite à quelques venues pour pas que ce soit trop lent
+    headers = {'Authorization': f'Bearer {api_token}'}
+    params = {'status': 'live', 'order_by': 'start_asc', 'expand': 'venue'}
+    
+    count = 0
+    text_buffer = []
+    
+    for venue_id in venue_ids:
+        if count >= 6: break # On s'arrête si on a assez d'événements
         
-        events = data.get("events", [])
-        if not events:
-            return "Aucun événement EventBrite trouvé."
-        
-        result = []
-        for i, event in enumerate(events[:6], 1):
-            name = event.get("name", {}).get("text", "Événement")
+        url = f'https://www.eventbriteapi.com/v3/venues/{venue_id}/events/'
+        try:
+            r = requests.get(url, headers=headers, params=params)
+            if r.status_code == 200:
+                data = r.json()
+                events = data.get('events', [])
+                
+                for event in events:
+                    if count >= 6: break
+                    
+                    # Extraction
+                    name = event['name']['text']
+                    
+                    # Date
+                    local_dt = event['start']['local']
+                    date_str = local_dt.replace("T", " à ")[:16]
+                    
+                    # Lieu
+                    venue_name = event.get('venue', {}).get('name', 'Bruxelles')
+                    
+                    # Prix
+                    is_free = event.get('is_free', False)
+                    price = "🆓 Gratuit" if is_free else "💶 Payant"
+                    
+                    # Url
+                    url = event.get('url', '')
+                    
+                    # Description
+                    desc = event.get('description', {}).get('text') or "Pas de description"
+                    desc = desc[:200] + "..." if len(desc) > 200 else desc
+                    
+                    # Objet structuré
+                    event_obj = {
+                        "title": name,
+                        "start_date": date_str,
+                        "location": venue_name,
+                        "price": price,
+                        "url": url,
+                        "description": desc,
+                        "full_description": desc,
+                        "source": "EventBrite"
+                    }
+                    formatted_events.append(event_obj)
+                    
+                    # Texte
+                    buf = f"**{name}**\n"
+                    buf += f"📅 {date_str}\n"
+                    buf += f"📍 {venue_name}\n"
+                    buf += f"💰 {price}\n"
+                    buf += f"🔗 {url}\n"
+                    buf += f"Description: {desc}\n"
+                    buf += f"\n" # Par défaut Art/Social pour EventBrite
+                    text_buffer.append(buf)
+                    
+                    count += 1
+        except:
+            continue
             
-            # Date
-            start = event.get("start", {})
-            date_str = start.get("local", "Date inconnue")
-            if "T" in date_str:
-                date_str = date_str.replace("T", " à ")[:16]
+    if formatted_events:
+        text_result = "👥 **ATELIERS & SOCIAL (EventBrite) :**\n\n"
+        for i, buf in enumerate(text_buffer, 1):
+            # On réinjecte le numéro ici pour que la numérotation soit continue si besoin
+            text_result += f"{i}. {buf}\n"
             
-            # Lieu
-            venue = event.get("venue", {})
-            location = venue.get("name", "Bruxelles")
-            
-            # Prix
-            is_free = event.get("is_free", False)
-            price = "🆓 Gratuit" if is_free else "💶 Payant"
-            
-            # Description
-            desc = event.get("description", {}).get("text", "")
-            if len(desc) > 150:
-                desc = desc[:150] + "..."
-            
-            # URL
-            url = event.get("url", "")
-            
-            result.append(f"{i}. **{name}**")
-            result.append(f"📅 {date_str}")
-            result.append(f"📍 {location}")
-            result.append(f"💰 {price}")
-            if url:
-                result.append(f"🔗 {url}")
-            result.append(f"Description: {desc}")
-            result.append("<!-- CATEGORY:Art -->")
-            result.append("")
-        
-        return "\n".join(result) if result else "Aucun événement trouvé."
-        
-    except Exception as e:
-        return f"Erreur EventBrite: {e}"
+    return text_result, formatted_events
