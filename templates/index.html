@@ -166,42 +166,78 @@
             } catch (error) { typingIndicator.style.display = 'none'; addMessage('❌ Erreur.'); }
         }
 
-        // --- LIKE LOGIC (Avec Logs Détaillés) ---
-        window.toggleLike = async function(btn, textContent, categoryContext) {
+        // --- LIKE LOGIC AMÉLIORÉE ---
+        let likeInProgress = {}; // Pour éviter les clics multiples
+        
+        window.toggleLike = async function(event, btn) {
             event.stopPropagation();
+            
+            const eventTitle = btn.getAttribute('data-event-title');
+            const categoryContext = btn.getAttribute('data-category');
+            
+            // Éviter les clics multiples sur le même événement
+            if(likeInProgress[eventTitle]) {
+                console.log("⏳ Clic ignoré (en cours de traitement)");
+                return;
+            }
+            
+            // Marquer comme en cours
+            likeInProgress[eventTitle] = true;
+            
+            // Toggle visuel immédiat
+            const wasLiked = btn.classList.contains('liked');
             btn.classList.toggle('liked');
+            
             if(btn.classList.contains('liked')) {
                 btn.innerHTML = '💖';
-                setTimeout(() => btn.innerHTML = '❤️', 1000);
+                setTimeout(() => btn.innerHTML = '❤️', 800);
+                console.log(`❤️ LIKE sur "${eventTitle}" [Catégorie: ${categoryContext}]`);
+            } else {
+                console.log(`💔 UNLIKE sur "${eventTitle}" [Catégorie: ${categoryContext}]`);
+            }
+            
+            try {
+                const response = await fetch('/like', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ 
+                        text: eventTitle, 
+                        category: categoryContext,
+                        action: btn.classList.contains('liked') ? 'like' : 'unlike'
+                    })
+                });
+                const data = await response.json();
                 
-                console.log(`ACTION UTILISATEUR: Like sur "${textContent}" [Catégorie: ${categoryContext}]`);
-                
-                try {
-                    const response = await fetch('/like', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ text: textContent, category: categoryContext })
-                    });
-                    const data = await response.json();
+                if(data.status === 'success') {
+                    // --- DEBUG DÉTAILLÉ LIVE UPDATE ---
+                    console.group("%c ❤️ MISE À JOUR LIVE DU VECTEUR ", "background: #e17055; color: white; padding: 4px; font-size: 12px;");
+                    console.log("1. Catégorie boostée :", data.updated_category, data.action === 'like' ? "(+0.25)" : "(-0.25)");
+                    console.log("2. Nouveau Vecteur   :", data.new_vector);
                     
-                    if(data.status === 'success') {
-                        // --- DEBUG DÉTAILLÉ LIVE UPDATE ---
-                        console.group("%c ❤️ MISE À JOUR LIVE DU VECTEUR ", "background: #e17055; color: white; padding: 4px; font-size: 12px;");
-                        console.log("1. Catégorie boostée :", data.updated_category, "(+0.25)");
-                        console.log("2. Nouveau Vecteur   :", data.new_vector);
-                        
-                        if(data.new_neighbor) {
-                             console.log("%c 3. NOUVEAU VOISIN CALCULÉ ", "color: #ffeaa7; font-weight: bold;");
-                             console.log("   -> ID Voisin       :", data.new_neighbor.matched_user_id);
-                             console.log("   -> Archétype       :", data.new_neighbor.matched_archetype);
-                             console.log("   -> Score Similarité:", data.new_neighbor.similarity_score);
-                             // Petit log pour voir si ça bouge
-                             console.log("%c   (Preuve qu'on bouge: le score change même si l'archétype reste le même !)", "font-style: italic; color: #aaa;");
-                        }
-                        console.groupEnd();
-                        // ----------------------------------
+                    if(data.new_neighbor) {
+                         console.log("%c 3. NOUVEAU VOISIN CALCULÉ ", "color: #ffeaa7; font-weight: bold;");
+                         console.log("   -> ID Voisin       :", data.new_neighbor.matched_user_id);
+                         console.log("   -> Archétype       :", data.new_neighbor.matched_archetype);
+                         console.log("   -> Score Similarité:", data.new_neighbor.similarity_score);
+                         console.log("%c   (Preuve qu'on bouge: le score change même si l'archétype reste le même !)", "font-style: italic; color: #aaa;");
                     }
-                } catch(e) { console.error(e); }
+                    console.groupEnd();
+                } else {
+                    // Si erreur, revert le toggle visuel
+                    btn.classList.toggle('liked');
+                    btn.innerHTML = '❤️';
+                    console.error("Erreur:", data.message);
+                }
+            } catch(e) { 
+                console.error(e);
+                // Revert le toggle en cas d'erreur
+                btn.classList.toggle('liked');
+                btn.innerHTML = '❤️';
+            } finally {
+                // Libérer le cooldown après un délai
+                setTimeout(() => {
+                    delete likeInProgress[eventTitle];
+                }, 500);
             }
         }
         // --- LOGIQUE DU MENU PRINCIPAL ---
@@ -209,36 +245,31 @@
             const container = document.getElementById('sub-menu-container');
             let html = '';
             
-            // On définit les sous-boutons ici (correspondent à tes API tools.py)
+            // Menu simplifié : catégories générales, pas de genres trop précis
             if (category === 'music') {
                 html = `
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Rock')">🎸 Rock</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Jazz')">🎷 Jazz</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Rap')">🎤 Rap</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert Pop')">✨ Pop</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Concert de Musique Classique')">🎻 Classique</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Jam Session')">🎸 Jam / Pratique</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je cherche des concerts')">🎵 Concerts</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je veux faire une activité en lien avec la musique')">🎶 Événements musicaux</button>
                 `;
             } else if (category === 'culture') {
                 html = `
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Aller au Cinéma')">🎬 Cinéma</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Pièce de Théâtre')">🎭 Théâtre</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Visiter une Exposition')">🖼️ Expo / Musée</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je veux aller au cinéma, voir des films')">🎬 Cinéma</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je cherche des spectacles ou du théâtre')">🎭 Théâtre / Spectacles</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je veux visiter une expo ou un musée')">🖼️ Expo / Musée</button>
                 `;
             } else if (category === 'sport') {
                 html = `
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Aller voir un match')">🏟️ Voir un match</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Faire du Yoga')">🧘 Yoga</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Faire un footing ou balade')">🌳 Balade / Course</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Cours de Fitness')">💪 Fitness</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Jouer au Padel ou Tennis')">🎾 Padel / Tennis</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je veux faire du sport ou une activité physique')">💪 Activités sportives</button>
+                `;
+            } else if (category === 'nature') {
+                html = `
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je cherche une balade ou activité nature en plein air')">🌳 Balades / Plein air</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je veux visiter un parc ou jardin à Bruxelles')">🌷 Parcs / Jardins</button>
+                    <button class="menu-btn sub" onclick="sendMenuChoice('Je cherche un marché ou événement outdoor')">🛒 Marchés / Outdoor</button>
                 `;
             } else if (category === 'social') {
                 html = `
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Manger au restaurant')">🍔 Gastronomie</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Faire un marché ou brocante')">🛍️ Marché / Brocante</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Participer à un atelier')">🛠️ Atelier / Stage</button>
-                    <button class="menu-btn sub" onclick="sendMenuChoice('Soirée ou Clubbing')">🎉 Soirée / Fête</button>
+                    
                 `;
             }
             

@@ -7,8 +7,8 @@ from langchain.memory import ConversationBufferMemory
 from langchain.prompts import MessagesPlaceholder
 from langchain.schema import SystemMessage
 
-# Import des fonctions optimisées
-from tools import (
+# Import des nouvelles fonctions optimisées
+from tools_new import (
     get_brussels_events_formatted, 
     get_brussels_events,
     get_ticketmaster_events, 

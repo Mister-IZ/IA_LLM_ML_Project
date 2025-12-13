@@ -63,7 +63,7 @@ def onboarding():
             <button class="menu-btn main" onclick="showSubMenu('music')">🎵 Musique & Concerts</button>
             <button class="menu-btn main" onclick="showSubMenu('culture')">🎨 Culture & Sorties</button>
             <button class="menu-btn main" onclick="showSubMenu('sport')">🏃 Sport & Bien-être</button>
-            <button class="menu-btn main" onclick="showSubMenu('social')">🍻 Social & Gastronomie</button>
+            <button class="menu-btn main" onclick="showSubMenu('nature')">🌳 Nature & Plein air</button>
         </div>
         <div id="sub-menu-container" class="sub-menu-container"></div>
         """
@@ -79,22 +79,34 @@ def onboarding():
 
 @app.route('/like', methods=['POST'])
 def like_event():
-    """Gère le Like avec priorité à l'analyse sémantique du titre"""
+    """Gère le Like/Unlike avec catégorie détectée sémantiquement"""
     data = request.json
     text = data.get('text', '').lower()
-    category_forced = data.get('category', None) # Le contexte envoyé par le front (ex: Sport)
+    category_forced = data.get('category', None)
+    action = data.get('action', 'like')
     
     cat_found = None
     
-    # --- 1. ANALYSE SÉMANTIQUE (PRIORITÉ ABSOLUE) ---
-    # Si le titre contient un mot-clé fort, on ignore le contexte de conversation
-    # Cela règle le problème : "Je suis dans Sport, il me propose un Musée, je like -> Ça doit être Art"
+    # --- 1. ANALYSE SÉMANTIQUE ROBUSTE ---
     keywords = {
-        "Music": ['concert', 'musique', 'jazz', 'rock', 'playlist', 'chanson', 'orchestre', 'nits', 'soprano', 'sheila', 'calogero'],
-        "Sport": ['match', 'course', 'yoga', 'sport', 'ballon', 'stade', 'padel', 'fitness', 'training', 'karaté', 'zumba', 'badminton'],
-        "Cinema": ['film', 'cinéma', 'projection', 'théâtre', 'spectacle', 'court métrage', 'documentaire'],
-        "Art":    ['expo', 'musée', 'peinture', 'art', 'galerie', 'vernissage', 'beaux-arts', 'design'],
-        "Nature": ['balade', 'parc', 'fleur', 'plantes', 'jardin', 'forêt', 'bois']
+        "Music": ['concert', 'musique', 'jazz', 'rock', 'playlist', 'chanson', 'orchestre', 
+                  'opera', 'opéra', 'soprano', 'nits', 'sheila', 'calogero', 'live', 'band', 
+                  'dj', 'electro', 'hip-hop', 'rap', 'pop', 'metal', 'folk', 'classique', 
+                  'festival', 'performance', 'artiste', 'concert de', 'soirée', 'danse'],
+        "Sport": ['match', 'course', 'yoga', 'sport', 'ballon', 'stade', 'padel', 'fitness', 
+                  'training', 'karaté', 'zumba', 'badminton', 'tennis', 'football', 'basket',
+                  'athletisme', 'boxe', 'wrestling', 'escalade', 'trail', 'vélo', 'marathon',
+                  'rugby', 'volley', 'handball', 'danse sportive'],
+        "Cinema": ['film', 'cinéma', 'projection', 'théâtre', 'spectacle', 'court métrage', 
+                   'documentaire', 'cinema', 'theatre', 'ciné', 'rétrospective', 'festival de film',
+                   'avant-première', 'séance', 'acteur', 'réalisateur', 'comédie', 'drama',
+                   'thriller', 'action', 'horror', 'animation'],
+        "Art": ['expo', 'musée', 'peinture', 'art', 'galerie', 'vernissage', 'beaux-arts', 
+                'design', 'sculpture', 'atelier', 'workshop', 'exposition', 'installation',
+                'photographie', 'gravure', 'dessin', 'craft', 'artisanat'],
+        "Nature": ['balade', 'parc', 'fleur', 'plantes', 'jardin', 'forêt', 'bois', 'nature',
+                   'pique-nique', 'marche', 'randonnée', 'trek', 'promenade', 'marché', 'floral',
+                   'botanical', 'verdure', 'plein air', 'outdoor']
     }
     
     for cat, words in keywords.items():
@@ -103,23 +115,29 @@ def like_event():
             break
             
     # --- 2. FALLBACK SUR LE CONTEXTE ---
-    # Si pas de mot-clé trouvé (ex: titre "Les Baronnes"), on fait confiance au contexte
     if not cat_found and category_forced and category_forced in user_profile["vector"]:
         cat_found = category_forced
     
+    # --- 3. DÉFAUT (Ne pas laisser vide) ---
+    if not cat_found:
+        cat_found = "Art"  # Par défaut ultra-sûr
+    
     if cat_found:
-        # A. Boost (+0.25)
-        user_profile["vector"][cat_found] = min(1.0, user_profile["vector"][cat_found] + 0.25)
+        if action == 'like':
+            user_profile["vector"][cat_found] = min(1.0, user_profile["vector"][cat_found] + 0.25)
+            decay_rate = 0.05
+            for category in user_profile["vector"]:
+                if category != cat_found:
+                    current_val = user_profile["vector"][category]
+                    if current_val > 0.1:
+                        user_profile["vector"][category] = max(0.1, current_val - decay_rate)
+        else:  # unlike
+            user_profile["vector"][cat_found] = max(0.1, user_profile["vector"][cat_found] - 0.25)
+            boost_rate = 0.05
+            for category in user_profile["vector"]:
+                if category != cat_found:
+                    user_profile["vector"][category] = min(1.0, user_profile["vector"][category] + boost_rate)
         
-        # B. Decay (-0.05)
-        decay_rate = 0.05
-        for category in user_profile["vector"]:
-            if category != cat_found:
-                current_val = user_profile["vector"][category]
-                if current_val > 0.1:
-                    user_profile["vector"][category] = max(0.1, current_val - decay_rate)
-        
-        # C. Recalcul Voisin
         new_neighbor = None
         if rec_engine:
             new_neighbor = rec_engine.find_similar_user(user_profile["vector"])
@@ -127,6 +145,7 @@ def like_event():
             
         return jsonify({
             "status": "success",
+            "action": action,
             "updated_category": cat_found,
             "new_vector": user_profile["vector"],
             "new_neighbor": new_neighbor
