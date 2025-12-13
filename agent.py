@@ -147,63 +147,6 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         """Détecte si c'est une demande de pagination"""
         return message.lower().strip() in ['autre', 'autres', 'suivant', 'encore', 'plus', 'next']
 
-    def _is_specific_event_request(self, message: str) -> Tuple[bool, Optional[int]]:
-        """Détecte si c'est une demande spécifique sur un événement (ex: "3", "détails sur 5")"""
-        message_lower = message.lower().strip()
-        
-        # Numéro simple
-        if message_lower.isdigit():
-            return True, int(message_lower)
-        
-        # Patterns comme "plus d'infos sur 5", "détails 3"
-        patterns = [
-            r'(\d+)(?:\s|$)',
-            r'sur\s+(\d+)',
-            r'num[ée]ro\s+(\d+)',
-            r'[ée]v[ée]nement\s+(\d+)',
-            r'd[ée]tails?\s+(\d+)',
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, message_lower)
-            if match:
-                return True, int(match.group(1))
-        
-        return False, None
-
-    def _get_event_details(self, event_number: int) -> str:
-        """Récupère les détails complets d'un événement spécifique"""
-        events = self.current_state["last_displayed_events"]
-        
-        if not events:
-            return "❌ Aucun événement récent. Fais d'abord une recherche !"
-        
-        if event_number < 1 or event_number > len(events):
-            return f"❌ Numéro invalide. Choisis entre 1 et {len(events)}."
-        
-        event = events[event_number - 1]
-        
-        result = f"🎯 **DÉTAILS COMPLETS - {event['title']}**\n\n"
-        result += f"**📍 Lieu :** {event['location']}\n"
-        result += f"**📅 Date :** {event['start_date']}\n"
-        result += f"**💰 Prix :** {event['price']}\n"
-        if event.get('url'):
-            result += f"**🔗 Lien :** {event['url']}\n"
-        result += f"\n**📖 Description complète :**\n{event.get('full_description', event['description'])}\n\n"
-        
-        # Conseils sociaux contextuels
-        title_lower = event['title'].lower()
-        if any(word in title_lower for word in ['atelier', 'workshop']):
-            result += "💡 **Conseil :** Les ateliers sont parfaits pour rencontrer des gens !\n"
-        elif any(word in title_lower for word in ['concert', 'festival']):
-            result += "💡 **Conseil :** Ambiance conviviale garantie !\n"
-        elif any(word in title_lower for word in ['film', 'cinéma', 'projection']):
-            result += "💡 **Conseil :** Les projections sont souvent suivies de discussions !\n"
-        
-        result += f"\n🔙 Dis 'retour' pour revenir à la liste"
-        
-        return self._format_response_to_html(result, self.current_state["last_ml_category"])
-
     def _handle_pagination(self) -> str:
         """Gère la pagination des résultats - PAGINATION LOCALE (rapide!)"""
         all_events = self.current_state.get("all_filtered_events", [])
@@ -277,16 +220,11 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         if ml_cat != "General":
             current_context_category = ml_cat
         
-        # 3. Gestion des demandes spécifiques (numéro d'événement)
-        is_specific, event_number = self._is_specific_event_request(user_message)
-        if is_specific and event_number:
-            return self._get_event_details(event_number)
-        
-        # 4. Gestion de la pagination
+        # 3. Gestion de la pagination
         if self._is_pagination_request(user_message):
             return self._handle_pagination()
         
-        # 5. Gestion du retour à la liste
+        # 4. Gestion du retour à la liste
         if msg_lower in ['retour', 'liste', 'back']:
             if self.current_state["last_displayed_events"]:
                 return self._rebuild_list_from_state()
@@ -378,61 +316,106 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         return self._format_response_to_html(result, ml_category)
 
     def _get_opposite_events(self, system_instruction: str, current_category: str) -> Optional[str]:
-        """Recherche des événements dans une catégorie opposée au profil"""
+        """Recherche des événements 'Osez la Nouveauté' avec logique LLM intelligente"""
         
-        # Mapping des profils vers leurs catégories opposées
-        opposite_map = {
-            'Fêtard': ['nature', 'expositions', 'théâtre'],
-            'Culturel': ['sports', 'nature', 'concerts'],
-            'Sportif': ['expositions', 'théâtre', 'nature'],
-            'Cinéphile': ['sports', 'nature', 'concerts'],
-            'Chill': ['concerts', 'sports', 'expositions']
-        }
-        
-        # Détection du profil
+        # Détecter le profil
         profile = "Fêtard"
-        for prof in opposite_map.keys():
+        for prof in ['Fêtard', 'Culturel', 'Sportif', 'Cinéphile', 'Chill']:
             if prof in system_instruction:
                 profile = prof
                 break
         
-        # Obtenir les catégories opposées
-        opposite_categories = opposite_map.get(profile, ['expositions'])
+        events = self.current_state.get("last_displayed_events", [])
+        if not events:
+            return None
         
-        # Filtrer pour ne pas rechercher dans la catégorie actuelle
-        if current_category == "Music":
-            opposite_categories = [c for c in opposite_categories if c not in ['concerts', 'musique']]
-        elif current_category == "Art":
-            opposite_categories = [c for c in opposite_categories if c not in ['art', 'expositions', 'théâtre']]
-        elif current_category == "Sport":
-            opposite_categories = [c for c in opposite_categories if c not in ['sports']]
-        elif current_category == "Cinema":
-            opposite_categories = [c for c in opposite_categories if c not in ['film', 'cinéma', 'ciné']]
+        # Mapping des profils vers les catégories LARGES possibles pour "Osez la Nouveauté"
+        category_mapping = {
+            'Fêtard': ['sport', 'nature', 'art'],  # Fêtard peut découvrir le calme
+            'Culturel': ['musique', 'sport', 'nature'],  # Culturel peut découvrir la musique live ou l'action
+            'Sportif': ['art', 'musique', 'spectacle'],  # Sportif peut découvrir la créativité
+            'Cinéphile': ['sport', 'musique', 'spectacle'],  # Cinéphile peut découvrir d'autres formes d'art
+            'Chill': ['musique', 'spectacle', 'art'],  # Chill peut découvrir l'énergie
+        }
         
-        if not opposite_categories:
-            opposite_categories = ['expositions']
+        available_categories = category_mapping.get(profile, ['sport', 'musique', 'art'])
         
-        # Rechercher dans la première catégorie opposée
-        query = opposite_categories[0]
-        if query == 'nature':
-            query = 'parc balade jardin'
+        # Construire la liste des événements actuels pour contexte
+        events_text = "\n".join([
+            f"- {e['title']}" 
+            for e in events[:5]
+        ])
         
-        print(f"[DEBUG] Recherche opposée: profil '{profile}' -> query '{query}'")
-        
+        # Demander au LLM de choisir UNE catégorie large parmi la liste
         try:
-            _, _, formatted_events = get_brussels_events_formatted(query, limit=3)
+            llm_prompt = f"""Tu es un assistant qui suggère des découvertes pour les gens.
+
+Profil: {profile}
+Ils cherchent actuellement: {events_text}
+
+Pour "Osez la Nouveauté", choisis UNE catégorie LARGE parmi:
+- Musique
+- Sport
+- Art
+- Nature
+- Spectacle
+- Cuisine
+
+RÈGLES:
+1. La catégorie doit être DIFFÉRENTE de ce qu'ils demandent
+2. Choisis une catégorie qui correspond PSYCHOLOGIQUEMENT à leur profil
+3. Explique le lien avec UNE PHRASE courte et simple
+
+Exemples de bonnes raisons:
+- Cinéphile + sport = "Beaucoup de films d'action/boxe, pourquoi ne pas vivre la chose réelle ?"
+- Fêtard + art = "Les galeries d'art ont souvent des vernissages festifs"
+- Sportif + musique = "La musique live a la même énergie que le sport"
+- Culturel + nature = "La nature est une galerie naturelle"
+
+Réponds UNIQUEMENT avec ce format:
+CATÉGORIE: [une seule]
+RAISON: [une phrase simple]"""
+            
+            response = self.llm.invoke(llm_prompt)
+            llm_text = response.content if hasattr(response, 'content') else str(response)
+            
+            print(f"[DEBUG LLM Novelty] Raw response:\n{llm_text}")
+            
+            # Parser la réponse
+            category_suggestion = None
+            reason = ""
+            
+            for line in llm_text.split('\n'):
+                if line.startswith('CATÉGORIE:') or line.startswith('CATEGORIE:'):
+                    category_suggestion = line.split(':', 1)[1].strip().lower()
+                elif line.startswith('RAISON:'):
+                    reason = line.split(':', 1)[1].strip()
+            
+            if not category_suggestion:
+                category_suggestion = 'sport'  # Fallback
+            
+            print(f"[DEBUG] Osez la Nouveauté: {category_suggestion} -> {reason}")
+            
+            # Rechercher des événements dans cette catégorie LARGE
+            _, _, formatted_events, _ = get_brussels_events_formatted_with_all(category_suggestion, limit=3)
             
             if formatted_events:
+                # Choisir UN seul événement intelligemment
+                best_event = formatted_events[0]
+                
                 result = f"\n\n🎲 **OSEZ LA NOUVEAUTÉ !**\n\n"
-                for i, event in enumerate(formatted_events[:3], 1):
-                    result += f"{i}. **{event['title']}**\n"
-                    result += f"📅 {event['start_date']}\n"
-                    result += f"📍 {event['location']}\n"
-                    result += f"💰 {event['price']}\n"
-                    result += f"Description: {event['description']}\n\n"
+                result += f"💡 *{reason}*\n\n"
+                result += f"1. **{best_event['title']}**\n"
+                result += f"📅 {best_event['start_date']}\n"
+                result += f"📍 {best_event['location']}\n"
+                result += f"💰 {best_event['price']}\n"
+                result += f"Description: {best_event['full_description']}\n"
+                
                 return result
         except Exception as e:
-            print(f"[DEBUG] Erreur recherche opposée: {e}")
+            print(f"[DEBUG] Erreur LLM Novelty: {e}")
+            import traceback
+            traceback.print_exc()
         
         return None
 

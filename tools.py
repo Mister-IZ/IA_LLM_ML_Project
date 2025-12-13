@@ -349,7 +349,8 @@ def get_brussels_events_formatted(query: str, page: int = 1, limit: int = 8) -> 
         result += f"💰 {formatted['price']}\n"
         if formatted['url']:
             result += f"🔗 {formatted['url']}\n"
-        result += f"Description: {formatted['description']}\n"
+        # Toujours ajouter la description COMPLÈTE (pas juste la courte)
+        result += f"Description: {formatted['full_description']}\n"
         result += f"<!-- CATEGORY:{ml_category} -->\n\n"
     
     total_pages = (len(events) // limit) + 1
@@ -414,7 +415,8 @@ def get_brussels_events_formatted_with_all(query: str, limit: int = 8) -> Tuple[
         result += f"💰 {formatted['price']}\n"
         if formatted['url']:
             result += f"🔗 {formatted['url']}\n"
-        result += f"Description: {formatted['description']}\n"
+        # Toujours ajouter la description COMPLÈTE
+        result += f"Description: {formatted['full_description']}\n"
         result += f"<!-- CATEGORY:{ml_category} -->\n\n"
     
     total_pages = (len(all_formatted) // limit) + 1
