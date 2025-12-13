@@ -92,13 +92,17 @@ class BrusselsAPIFinal:
         translations = event.get("translations", {})
         
         # Titre - chercher dans toutes les langues
-        title = "Activité à Bruxelles"
+        title = None
         for lang in ["fr", "nl", "en", "de"]:
             if lang in translations and isinstance(translations[lang], dict):
                 t = translations[lang].get("title") or translations[lang].get("name")
-                if t:
-                    title = t
+                if t and t.strip():
+                    title = t.strip()
                     break
+        
+        # Si pas de titre trouvé, utiliser le nom de l'événement racine
+        if not title:
+            title = event.get("name") or event.get("title") or "Événement"
         
         # Description - chercher shortdescr puis description
         description = ""
@@ -135,9 +139,14 @@ class BrusselsAPIFinal:
                     date_part, time_part = date_str.split("T")
                     time_part = time_part.split(".")[0].replace("Z", "")[:5]
                     year, month, day = date_part.split("-")
+                    # Afficher la date COMPLÈTE avec le jour
                     start_date = f"{day}/{month}/{year} à {time_part}"
                 except:
                     start_date = date_str.replace("T", " ").split(".")[0]
+            else:
+                # Si c'est juste une heure sans date, ajouter "Aujourd'hui"
+                if ":" in date_str and len(date_str) <= 8:
+                    start_date = f"Aujourd'hui à {date_str[:5]}"
         
         # Lieu
         place = event.get("place", {})
@@ -345,9 +354,81 @@ def get_brussels_events_formatted(query: str, page: int = 1, limit: int = 8) -> 
     
     total_pages = (len(events) // limit) + 1
     result += f"\n💬 **{len(page_events)} activités affichées** (Page {page}/{total_pages})\n"
-    result += "🔄 Dites 'autre' pour plus d'options"
+    result += '<div class="pagination-hint">🔄 Tu veux que je t' + "'" + 'en propose d' + "'" + 'autres ? <button class="suggestion-btn pagination-btn" onclick="handlePagination()">👉 Appuie ici</button></div>'
+    
+    # DEBUG: Montrer le format exact
+    print(f"\n[DEBUG TOOLS] ===== FORMAT GÉNÉRÉ =====")
+    print(f"Total length: {len(result)}")
+    print(f"Newlines: {result.count(chr(10))}")
+    print(f"First 300 chars: {repr(result[:300])}")
     
     return result, ml_category, formatted_events
+
+
+def get_brussels_events_formatted_with_all(query: str, limit: int = 8) -> Tuple[str, str, List[Dict], List[Dict]]:
+    """
+    Version qui retourne AUSSI tous les événements filtrés pour pagination locale
+    Retourne: (texte_formaté, ml_category, page_events, ALL_filtered_events)
+    """
+    api = get_brussels_api()
+    
+    # Détecter le type de filtre
+    filter_type, emoji, ml_category = EventFilter.detect_filter_type(query)
+    
+    # Stratégie de recherche
+    events = []
+    
+    # 1. Essayer recherche par keyword d'abord
+    if filter_type and filter_type != 'gratuit':
+        keywords = EventFilter.FILTER_MAP.get(filter_type, {}).get('keywords', [])
+        if keywords:
+            events = api.get_events(keyword=keywords[0], page=1, limit=100)  # Charger plus
+    
+    # 2. Si pas assez de résultats, charger tous les événements et filtrer
+    if len(events) < 5:
+        all_events = api.load_all_events(max_pages=10)
+        events = EventFilter.filter_events(all_events, filter_type, api)
+    
+    if not events:
+        return f"❌ Aucune activité trouvée pour '{query}'.", ml_category, [], []
+    
+    # Formater TOUS les événements
+    all_formatted = []
+    for event in events:
+        formatted = api.format_event(event)
+        all_formatted.append(formatted)
+    
+    # Première page
+    page_events = all_formatted[:limit]
+    
+    if not page_events:
+        return "📭 Plus d'activités disponibles.", ml_category, [], []
+    
+    # Formatage de la première page
+    result = f"{emoji} **ACTIVITÉS À BRUXELLES :**\n\n"
+    
+    for i, formatted in enumerate(page_events, 1):
+        result += f"{i}. **{formatted['title']}**\n"
+        result += f"📅 {formatted['start_date']}\n"
+        result += f"📍 {formatted['location']}\n"
+        result += f"💰 {formatted['price']}\n"
+        if formatted['url']:
+            result += f"🔗 {formatted['url']}\n"
+        result += f"Description: {formatted['description']}\n"
+        result += f"<!-- CATEGORY:{ml_category} -->\n\n"
+    
+    total_pages = (len(all_formatted) // limit) + 1
+    result += f"\n💬 **{len(page_events)} activités affichées** (Page 1/{total_pages})\n"
+    result += '<div class="pagination-hint">🔄 Tu veux que je t' + "'" + 'en propose d' + "'" + 'autres ? <button class="suggestion-btn pagination-btn" onclick="handlePagination()">👉 Appuie ici</button></div>'
+    
+    # DEBUG: Montrer le format exact
+    print(f"\n[DEBUG TOOLS WITH_ALL] ===== FORMAT GÉNÉRÉ =====")
+    print(f"Total length: {len(result)}")
+    print(f"Newlines: {result.count(chr(10))}")
+    print(f"First 300 chars: {repr(result[:300])}")
+    print(f"Retourne {len(page_events)} events page 1, {len(all_formatted)} total pour pagination")
+    
+    return result, ml_category, page_events, all_formatted
 
 
 def get_brussels_events(category: str) -> str:

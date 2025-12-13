@@ -9,7 +9,8 @@ from langchain.schema import SystemMessage
 
 # Import des fonctions optimisées
 from tools import (
-    get_brussels_events_formatted, 
+    get_brussels_events_formatted,
+    get_brussels_events_formatted_with_all,
     get_brussels_events,
     get_ticketmaster_events, 
     get_eventbrite_events,
@@ -135,9 +136,10 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         self.current_state = {
             "filter_type": None,
             "current_page": 1,
-            "all_events": [],
-            "last_displayed_events": [],
-            "last_ml_category": "General"
+            "all_filtered_events": [],  # TOUS les événements filtrés (pour pagination locale)
+            "last_displayed_events": [],  # Événements affichés sur la page actuelle
+            "last_ml_category": "General",
+            "last_search_query": None
         }
         self.memory.clear()
 
@@ -203,38 +205,60 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         return self._format_response_to_html(result, self.current_state["last_ml_category"])
 
     def _handle_pagination(self) -> str:
-        """Gère la pagination des résultats"""
+        """Gère la pagination des résultats - PAGINATION LOCALE (rapide!)"""
+        all_events = self.current_state.get("all_filtered_events", [])
+        
+        if not all_events:
+            return self._format_response_to_html(
+                "🔍 Fais d'abord une recherche pour voir des résultats !",
+                "General"
+            )
+        
+        # Incrémenter la page
         self.current_state["current_page"] += 1
         page = self.current_state["current_page"]
-        filter_type = self.current_state["filter_type"]
+        limit = 8
         
-        # Recharger avec la nouvelle page
-        api = get_brussels_api()
+        # Calculer les indices
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
         
-        # Déterminer le keyword de recherche
-        keyword = None
-        if filter_type and filter_type in EventFilter.FILTER_MAP:
-            keywords = EventFilter.FILTER_MAP[filter_type].get('keywords', [])
-            if keywords:
-                keyword = keywords[0]
+        print(f"[DEBUG] Pagination LOCALE page {page}: events[{start_idx}:{end_idx}] sur {len(all_events)} total")
         
-        # Rechercher la page suivante
-        result_text, ml_category, formatted_events = get_brussels_events_formatted(
-            keyword or "bruxelles", 
-            page=page, 
-            limit=8
-        )
+        # Extraire la page
+        page_events = all_events[start_idx:end_idx]
         
-        if not formatted_events:
+        if not page_events:
+            # Revenir à la page 1
             self.current_state["current_page"] = 1
             return self._format_response_to_html(
                 "📭 **Plus d'activités de ce type.**\n\n🎯 Essaie une autre catégorie !",
-                ml_category
+                self.current_state["last_ml_category"]
             )
         
-        self.current_state["last_displayed_events"] = formatted_events
+        # Sauvegarder les événements affichés
+        self.current_state["last_displayed_events"] = page_events
         
-        return self._format_response_to_html(result_text, ml_category)
+        # Reconstruire le texte
+        ml_category = self.current_state["last_ml_category"]
+        filter_type, emoji, _ = EventFilter.detect_filter_type(self.current_state.get("last_search_query", ""))
+        
+        result = f"{emoji} **ACTIVITÉS À BRUXELLES :**\n\n"
+        for i, event in enumerate(page_events, 1):
+            result += f"{i}. **{event['title']}**\n"
+            result += f"📅 {event['start_date']}\n"
+            result += f"📍 {event['location']}\n"
+            result += f"💰 {event['price']}\n"
+            if event.get('url'):
+                result += f"🔗 {event['url']}\n"
+            result += f"Description: {event['description']}\n"
+            result += f"<!-- CATEGORY:{ml_category} -->\n\n"
+        
+        total_pages = (len(all_events) // limit) + 1
+        result += f"\n💬 **{len(page_events)} activités affichées** (Page {page}/{total_pages})\n"
+        result += '<div class="pagination-hint">🔄 Tu veux que je t\'en propose d\'autres ? <button class="suggestion-btn pagination-btn" onclick="handlePagination()">👉 Appuie ici</button></div>'
+        
+        return self._format_response_to_html(result, ml_category)
 
     def chat(self, message_complexe: str) -> str:
         """Interface de chat principale avec gestion intelligente"""
@@ -286,16 +310,29 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         # 7. Mode Recherche avec ML
         results = []
         
+        # Sauvegarder la recherche pour la pagination
+        self.current_state["last_search_query"] = user_message
+        self.current_state["filter_type"] = filter_type
+        self.current_state["current_page"] = 1  # Reset page pour nouvelle recherche
+        
+        print(f"[DEBUG] Nouvelle recherche: '{user_message}', filter_type: {filter_type}")
+        
         # Toujours essayer Brussels d'abord
         try:
-            result_text, ml_category, formatted_events = get_brussels_events_formatted(user_message)
+            result_text, ml_category, formatted_events, all_events = get_brussels_events_formatted_with_all(
+                user_message
+            )
             if formatted_events:
                 results.append(result_text)
                 self.current_state["last_displayed_events"] = formatted_events
+                self.current_state["all_filtered_events"] = all_events  # STOCKER TOUS pour pagination locale
                 self.current_state["last_ml_category"] = ml_category
                 current_context_category = ml_category
+                print(f"[DEBUG] Stocké {len(all_events)} événements pour pagination locale")
         except Exception as e:
             print(f"[DEBUG] Erreur Brussels: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Appel conditionnel Ticketmaster (concerts/sports)
         if any(x in msg_lower for x in ['concert', 'musique', 'music', 'sport', 'match']):
@@ -340,8 +377,67 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         
         return self._format_response_to_html(result, ml_category)
 
+    def _get_opposite_events(self, system_instruction: str, current_category: str) -> Optional[str]:
+        """Recherche des événements dans une catégorie opposée au profil"""
+        
+        # Mapping des profils vers leurs catégories opposées
+        opposite_map = {
+            'Fêtard': ['nature', 'expositions', 'théâtre'],
+            'Culturel': ['sports', 'nature', 'concerts'],
+            'Sportif': ['expositions', 'théâtre', 'nature'],
+            'Cinéphile': ['sports', 'nature', 'concerts'],
+            'Chill': ['concerts', 'sports', 'expositions']
+        }
+        
+        # Détection du profil
+        profile = "Fêtard"
+        for prof in opposite_map.keys():
+            if prof in system_instruction:
+                profile = prof
+                break
+        
+        # Obtenir les catégories opposées
+        opposite_categories = opposite_map.get(profile, ['expositions'])
+        
+        # Filtrer pour ne pas rechercher dans la catégorie actuelle
+        if current_category == "Music":
+            opposite_categories = [c for c in opposite_categories if c not in ['concerts', 'musique']]
+        elif current_category == "Art":
+            opposite_categories = [c for c in opposite_categories if c not in ['art', 'expositions', 'théâtre']]
+        elif current_category == "Sport":
+            opposite_categories = [c for c in opposite_categories if c not in ['sports']]
+        elif current_category == "Cinema":
+            opposite_categories = [c for c in opposite_categories if c not in ['film', 'cinéma', 'ciné']]
+        
+        if not opposite_categories:
+            opposite_categories = ['expositions']
+        
+        # Rechercher dans la première catégorie opposée
+        query = opposite_categories[0]
+        if query == 'nature':
+            query = 'parc balade jardin'
+        
+        print(f"[DEBUG] Recherche opposée: profil '{profile}' -> query '{query}'")
+        
+        try:
+            _, _, formatted_events = get_brussels_events_formatted(query, limit=3)
+            
+            if formatted_events:
+                result = f"\n\n🎲 **OSEZ LA NOUVEAUTÉ !**\n\n"
+                for i, event in enumerate(formatted_events[:3], 1):
+                    result += f"{i}. **{event['title']}**\n"
+                    result += f"📅 {event['start_date']}\n"
+                    result += f"📍 {event['location']}\n"
+                    result += f"💰 {event['price']}\n"
+                    result += f"Description: {event['description']}\n\n"
+                return result
+        except Exception as e:
+            print(f"[DEBUG] Erreur recherche opposée: {e}")
+        
+        return None
+
     def _add_ml_suggestions(self, content: str, system_instruction: str, category: str) -> str:
-        """Ajoute les suggestions personnalisées ML"""
+        """Ajoute les suggestions personnalisées ML en utilisant le LLM pour réfléchir"""
         # Détecter le profil
         profile = "Fêtard"
         for p in ['Fêtard', 'Culturel', 'Sportif', 'Cinéphile', 'Chill']:
@@ -349,38 +445,139 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
                 profile = p
                 break
         
-        # Suggestion personnalisée basée sur le premier événement
-        if self.current_state["last_displayed_events"]:
-            first_event = self.current_state["last_displayed_events"][0]
+        events = self.current_state.get("last_displayed_events", [])
+        if not events:
+            return content
+        
+        # Construire la liste des événements pour le LLM
+        events_text = "\n".join([
+            f"- {e['title']} ({e['location']}, {e['start_date']})" 
+            for e in events[:8]
+        ])
+        
+        # Demander au LLM de choisir et expliquer
+        try:
+            llm_prompt = f"""Tu es un assistant qui aide à choisir des activités.
+
+Profil de l'utilisateur: {profile}
+- Fêtard = aime les concerts, festivals, soirées, ambiance festive
+- Culturel = aime les expos, musées, théâtre, galeries d'art
+- Sportif = aime le sport, fitness, activités physiques
+- Cinéphile = aime les films, projections, cinéma
+- Chill = aime la nature, balades, détente
+
+Voici les événements disponibles:
+{events_text}
+
+Choisis UN événement qui correspond le mieux au profil {profile} et explique pourquoi en UNE phrase.
+Réponds UNIQUEMENT avec ce format:
+ÉVÉNEMENT: [nom exact de l'événement]
+RAISON: [ta phrase d'explication]"""
+            
+            response = self.llm.invoke(llm_prompt)
+            llm_text = response.content if hasattr(response, 'content') else str(response)
+            
+            # Parser la réponse
+            chosen_event = None
+            reason = ""
+            
+            for line in llm_text.split('\n'):
+                if line.startswith('ÉVÉNEMENT:') or line.startswith('EVENEMENT:'):
+                    event_name = line.split(':', 1)[1].strip()
+                    # Trouver l'événement correspondant
+                    for e in events:
+                        if event_name.lower() in e['title'].lower() or e['title'].lower() in event_name.lower():
+                            chosen_event = e
+                            break
+                elif line.startswith('RAISON:'):
+                    reason = line.split(':', 1)[1].strip()
+            
+            # Si pas trouvé, prendre le premier
+            if not chosen_event:
+                chosen_event = events[0]
+                reason = f"C'est un bon choix pour un {profile} !"
+            
             content += f"\n\n🤖 **SUGGESTION PERSONNALISÉE ({profile})**\n\n"
-            content += f"1. **{first_event['title']}**\n"
-            content += f"📅 {first_event['start_date']}\n"
-            content += f"📍 {first_event['location']}\n"
-            content += f"💰 {first_event['price']}\n"
-            content += f"Description: {first_event['description']} Parfait pour un {profile} !\n"
+            content += f"💡 *{reason}*\n\n"
+            content += f"1. **{chosen_event['title']}**\n"
+            content += f"📅 {chosen_event['start_date']}\n"
+            content += f"📍 {chosen_event['location']}\n"
+            content += f"💰 {chosen_event['price']}\n"
+            content += f"Description: {chosen_event['description']}\n"
+            
+        except Exception as e:
+            print(f"[DEBUG] Erreur LLM suggestion: {e}")
+            # Fallback: premier événement
+            if events:
+                content += f"\n\n🤖 **SUGGESTION PERSONNALISÉE ({profile})**\n\n"
+                content += f"1. **{events[0]['title']}**\n"
+                content += f"📅 {events[0]['start_date']}\n"
+                content += f"📍 {events[0]['location']}\n"
+                content += f"💰 {events[0]['price']}\n"
+        
+        # Ajouter "Osez la nouveauté" avec des événements opposés
+        opposite_content = self._get_opposite_events(system_instruction, category)
+        if opposite_content:
+            content += opposite_content
         
         return content
 
     def _format_response_to_html(self, response: str, category_context: str = "General") -> str:
-        """Formate la réponse en HTML avec cartes cliquables et boutons Like"""
+        """Formate la réponse en HTML avec cartes cliquables et boutons Like (VERSION CORRIGÉE)"""
         if not response:
             return "<p>...</p>"
         
-        # Si c'est juste nos boutons
-        if 'suggestion-btn' in response:
-            return self._inject_css() + '\n<div class="response-content">\n' + response + '\n</div>'
+        # Si déjà du HTML avec event-list
+        if '<ul class="event-list">' in response:
+            return '<div class="response-content">\n' + response + '\n</div>'
+        
+        # Si c'est JUSTE un menu de suggestions (pas de contenu d'événements)
+        if 'suggestion-btn' in response and '**ACTIVITÉS' not in response and '📅' not in response:
+            return '<div class="response-content">\n' + response + '\n</div>'
+        
+        # DEBUG DÉTAILLÉ
+        print(f"\n[DEBUG FULL] ===== DÉBUT FORMAT HTML =====")
+        print(f"Response length: {len(response)}")
+        print(f"Newlines count: {response.count(chr(10))}")
+        print(f"Has pagination button: {'pagination-btn' in response}")
+        print(f"Has ACTIVITÉS: {'**ACTIVITÉS' in response}")
+        print(f"First 300 chars: {repr(response[:300])}")
         
         cleaned = response.replace('```html', '').replace('```', '')
         
-        # Normalisation: "/" → multi-ligne
-        cleaned = re.sub(r'\s*/\s*📅', '\n📅', cleaned)
-        cleaned = re.sub(r'\s*/\s*📍', '\n📍', cleaned)
-        cleaned = re.sub(r'\s*/\s*💰', '\n💰', cleaned)
-        cleaned = re.sub(r'\s*/\s*🔗', '\n🔗', cleaned)
-        cleaned = re.sub(r'\s*/\s*Description:', '\nDescription:', cleaned)
+        # NORMALISATION IMPORTANTE: Forcer les sauts de ligne avant chaque emoji/info
+        print(f"\n[DEBUG] Before normalization - newlines: {cleaned.count(chr(10))}")
+        
+        # Garder trace des substitutions
+        patterns_to_normalize = [
+            (r'\s+(\d+\.\s+\*\*)', r'\n\1', 'Event numbers'),
+            (r'\s+📅', '\n📅', 'Dates'),
+            (r'\s+📍', '\n📍', 'Locations'),
+            (r'\s+💰', '\n💰', 'Prices'),
+            (r'\s+🔗', '\n🔗', 'URLs'),
+            (r'\s+Description:', '\nDescription:', 'Descriptions'),
+            (r'\s+💬', '\n\n💬', 'Activity count'),
+            (r'\s+🔄', '\n🔄', 'Pagination'),
+            (r'\s+🤖', '\n\n🤖', 'ML suggestions'),
+            (r'\s+🎲', '\n\n🎲', 'Novelty'),
+            (r'\s+💡', '\n💡', 'Ideas'),
+        ]
+        
+        for pattern, replacement, desc in patterns_to_normalize:
+            before = cleaned.count('\n')
+            cleaned = re.sub(pattern, replacement, cleaned)
+            after = cleaned.count('\n')
+            print(f"  {desc}: {before} → {after} newlines")
         
         html_parts = []
         lines = cleaned.split('\n')
+        print(f"\n[DEBUG] After split: {len(lines)} lines")
+        
+        # Afficher les premières lignes pour debug
+        for i, line in enumerate(lines[:5]):
+            print(f"  Line {i}: {repr(line[:80])}")
+        
+        print(f"\n[DEBUG] Starting parse loop...")
         current_section = []
         in_list = False
         list_items = []
@@ -398,8 +595,9 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
                     pass
                 continue
             
-            # Titres de section
-            if any(line.startswith(x) for x in ['🎯', '📌', '🌟', '🤖', '🎲', '❌', '📭', '💬', '🔄']):
+            # Titres de section (TOUS les emojis de catégorie)
+            section_emojis = ['🎯', '📌', '🌟', '🤖', '🎲', '❌', '📭', '💬', '🔄', '🎬', '🎵', '🎨', '🏃', '🌳', '🍳', '🆓']
+            if any(line.startswith(x) for x in section_emojis):
                 if list_items:
                     if current_hidden_info:
                         list_items[-1] += f'<div class="more-info">{"".join(current_hidden_info)}</div>'
@@ -418,7 +616,7 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
                     html_parts.append(f'<h3 class="section-ml">{line}</h3>')
                 elif line.startswith('🎲'):
                     html_parts.append(f'<h3 class="section-routine">{line}</h3>')
-                elif line.startswith('🎯'):
+                elif line.startswith('🎯') or line.startswith('🎬') or line.startswith('🎵') or line.startswith('🎨') or line.startswith('🏃') or line.startswith('🌳'):
                     html_parts.append(f'<h2 class="section-title">{line}</h2>')
                 elif line.startswith('❌') or line.startswith('📭'):
                     html_parts.append(f'<div class="alert-message">{line}</div>')
@@ -426,8 +624,10 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
                     html_parts.append(f'<h3 class="section-subtitle">{line}</h3>')
                 continue
             
-            # Item Liste (1. **Nom**)
-            if re.match(r'^\d+\.\s+\*\*', line) or re.match(r'^\d+\.\s+[A-Z]', line):
+            # Item Liste (1. **Nom**) - REGEX AMÉLIORÉ
+            event_match = re.match(r'^(\d+)\.\s+\*\*(.+?)\*\*', line) or re.match(r'^(\d+)\.\s+([A-Z].+)', line)
+            if event_match:
+                print(f"[DEBUG PARSE] Event trouvé: '{line[:50]}...'")  # DEBUG
                 if list_items:
                     if current_hidden_info:
                         list_items[-1] += f'<div class="more-info">{"".join(current_hidden_info)}</div>'
@@ -483,32 +683,12 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         if current_section:
             html_parts.append(f'<div class="section">{" ".join(current_section)}</div>')
 
-        return self._inject_css() + '\n<div class="response-content">\n' + '\n'.join(html_parts) + '\n</div>'
+        # DEBUG: Montrer le HTML généré
+        final_html = '<div class="response-content">\n' + '\n'.join(html_parts) + '\n</div>'
+        print(f"[DEBUG HTML] Final output contains {len(html_parts)} parts, event-list: {'event-list' in final_html}")
+        
+        return final_html
 
     def _inject_css(self):
-        return """
-        <style>
-        .event-list { list-style: none; padding: 0; margin: 20px 0; }
-        .event-item { background: white; border-left: 4px solid #007bff; padding: 20px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer; transition: all 0.2s; }
-        .event-item:hover { transform: translateY(-2px); background-color: #f8f9fa; }
-        .event-item strong { color: #2c3e50; font-size: 1.1em; display: block; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-        .event-detail { margin: 5px 0; padding-left: 25px; color: #555; }
-        .event-description { margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 5px; color: #333; }
-        .more-info { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ddd; }
-        .event-item.active .more-info { display: block; }
-        .click-hint { font-size: 0.8em; color: #999; text-align: center; margin-top: 10px; }
-        .event-item.active .click-hint { display: none; }
-        
-        .section-title { color: #2c3e50; margin: 30px 0 15px 0; border-bottom: 2px solid #007bff; font-size: 1.4em; }
-        .section-ml { color: #6c5ce7; margin: 25px 0 12px 0; background: rgba(108, 92, 231, 0.1); padding: 10px; border-radius: 5px; border-left: 4px solid #6c5ce7; }
-        .section-routine { color: #e17055; margin: 25px 0 12px 0; background: rgba(225, 112, 85, 0.1); padding: 10px; border-radius: 5px; border-left: 4px solid #e17055; }
-        .alert-message { background: #fff3cd; padding: 15px; border-radius: 8px; margin: 10px 0; }
-        
-        .like-btn { float: right; background: none; border: 1px solid #ddd; border-radius: 50%; cursor: pointer; font-size: 1.2em; padding: 5px; z-index: 10; position: relative; }
-        .like-btn:hover { transform: scale(1.2); background-color: #ffe6e6; }
-        .like-btn.liked { background-color: #ff4757; border-color: #ff4757; }
-        
-        .section { margin: 10px 0; line-height: 1.6; }
-        .event-info { padding: 5px 0; color: #666; }
-        </style>
-        """
+        # CSS maintenant dans index.html - plus besoin d'injecter
+        return ""

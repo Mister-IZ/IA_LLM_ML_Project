@@ -10,9 +10,9 @@
         .container { max-width: 800px; margin: 0 auto; background: white; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); overflow: hidden; position: relative; }
         .header { background: #2c3e50; color: white; padding: 20px; text-align: center; }
         .chat-container { height: 500px; overflow-y: auto; padding: 20px; background: #f8f9fa; }
-        .message { margin: 15px 0; padding: 12px 16px; border-radius: 15px; max-width: 85%; word-wrap: break-word; }
-        .user-message { background: #007bff; color: white; margin-left: auto; border-bottom-right-radius: 5px; }
-        .bot-message { background: white; color: #333; margin-right: auto; border-bottom-left-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .message { margin: 15px 0; padding: 12px 16px; border-radius: 15px; max-width: 95%; word-wrap: break-word; }
+        .user-message { background: #007bff; color: white; margin-left: auto; border-bottom-right-radius: 5px; max-width: 70%; }
+        .bot-message { background: transparent; color: #333; margin-right: auto; border-bottom-left-radius: 5px; box-shadow: none; max-width: 95%; }
         .message-sender { font-weight: bold; margin-bottom: 5px; font-size: 12px; opacity: 0.8; }
         .input-container { padding: 20px; background: white; border-top: 1px solid #e9ecef; display: flex; gap: 10px; }
         .message-input { flex: 1; padding: 12px 16px; border: 2px solid #e9ecef; border-radius: 25px; outline: none; }
@@ -51,6 +51,157 @@
         
         /* Animation d'apparition */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ========== STYLES DES CARTES D'ÉVÉNEMENTS ========== */
+        .bot-message .event-list,
+        .event-list { list-style: none !important; padding: 0 !important; margin: 20px 0 !important; }
+        
+        .bot-message .event-item,
+        .event-item { 
+            background: #fff !important; 
+            border-left: 4px solid #007bff !important; 
+            padding: 20px !important; 
+            margin-bottom: 15px !important; 
+            border-radius: 8px !important; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important; 
+            cursor: pointer !important; 
+            transition: all 0.2s !important; 
+            display: block !important;
+            color: #333 !important;
+        }
+        .bot-message .event-item:hover,
+        .event-item:hover { 
+            transform: translateY(-2px) !important; 
+            background-color: #f8f9fa !important; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+        }
+        .bot-message .event-item strong,
+        .event-item strong { 
+            color: #2c3e50 !important; 
+            font-size: 1.1em !important; 
+            display: block !important; 
+            margin-bottom: 10px !important; 
+            border-bottom: 1px solid #eee !important; 
+            padding-bottom: 8px !important; 
+        }
+        .bot-message .event-detail,
+        .event-detail { margin: 5px 0 !important; padding-left: 25px !important; color: #555 !important; }
+        
+        .bot-message .event-description,
+        .event-description { 
+            margin: 10px 0 !important; 
+            padding: 10px !important; 
+            background: #f8f9fa !important; 
+            border-radius: 5px !important; 
+            color: #333 !important; 
+        }
+        .bot-message .more-info,
+        .more-info { 
+            display: none !important; 
+            margin-top: 15px !important; 
+            padding-top: 15px !important; 
+            border-top: 1px dashed #ddd !important; 
+        }
+        .bot-message .event-item.active .more-info,
+        .event-item.active .more-info { display: block !important; }
+        
+        .bot-message .click-hint,
+        .click-hint { 
+            font-size: 0.8em !important; 
+            color: #999 !important; 
+            text-align: center !important; 
+            margin-top: 10px !important; 
+        }
+        .bot-message .event-item.active .click-hint,
+        .event-item.active .click-hint { display: none !important; }
+        
+        /* Titres de sections */
+        .bot-message .section-title,
+        .section-title { 
+            color: #2c3e50 !important; 
+            margin: 20px 0 15px 0 !important; 
+            border-bottom: 2px solid #007bff !important; 
+            padding-bottom: 10px !important;
+            font-size: 1.3em !important; 
+            font-weight: bold !important;
+        }
+        .bot-message .section-ml,
+        .section-ml { 
+            color: #6c5ce7 !important; 
+            margin: 25px 0 12px 0 !important; 
+            background: rgba(108, 92, 231, 0.1) !important; 
+            padding: 10px !important; 
+            border-radius: 5px !important; 
+            border-left: 4px solid #6c5ce7 !important; 
+            font-weight: bold !important;
+        }
+        .bot-message .section-routine,
+        .section-routine { 
+            color: #e17055 !important; 
+            margin: 25px 0 12px 0 !important; 
+            background: rgba(225, 112, 85, 0.1) !important; 
+            padding: 10px !important; 
+            border-radius: 5px !important; 
+            border-left: 4px solid #e17055 !important; 
+            font-weight: bold !important;
+        }
+        .bot-message .section-subtitle,
+        .section-subtitle {
+            color: #2c3e50 !important;
+            margin: 20px 0 10px 0 !important;
+            font-size: 1.1em !important;
+        }
+        .bot-message .alert-message,
+        .alert-message { 
+            background: #fff3cd !important; 
+            padding: 15px !important; 
+            border-radius: 8px !important; 
+            margin: 10px 0 !important; 
+        }
+        
+        /* Bouton Like */
+        .like-btn { 
+            float: right; 
+            background: none; 
+            border: 1px solid #ddd; 
+            border-radius: 50%; 
+            cursor: pointer; 
+            font-size: 1.2em; 
+            padding: 5px 8px; 
+            z-index: 10; 
+            position: relative; 
+        }
+        .like-btn:hover { 
+            transform: scale(1.2); 
+            background-color: #ffe6e6; 
+        }
+        .like-btn.liked { 
+            background-color: #ff4757; 
+            border-color: #ff4757; 
+        }
+        
+        .section { margin: 10px 0; line-height: 1.6; }
+        .event-info { padding: 5px 0; color: #666; }
+        .response-content { padding: 5px 0; }
+        
+        /* Bouton pagination */
+        .pagination-hint { 
+            margin-top: 15px; 
+            text-align: center; 
+        }
+        .pagination-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .pagination-btn:hover {
+            background: #0056b3;
+        }
     </style>
 </head>
 <body>
@@ -289,8 +440,25 @@
             if (event.target.classList.contains('like-btn')) return;
             element.classList.toggle('active');
         }
+        
+        // Debounce pour pagination
+        let paginationCooldown = false;
+        window.handlePagination = function() {
+            if (paginationCooldown) {
+                console.log("⏳ Pagination ignorée (cooldown actif)");
+                return;
+            }
+            paginationCooldown = true;
+            messageInput.value = 'autre';
+            sendMessage();
+            // Cooldown de 1.5 secondes
+            setTimeout(() => {
+                paginationCooldown = false;
+            }, 1500);
+        }
+        
         document.addEventListener('click', function(e) {
-            if (e.target && e.target.classList.contains('suggestion-btn')) {
+            if (e.target && e.target.classList.contains('suggestion-btn') && !e.target.classList.contains('pagination-btn')) {
                 messageInput.value = e.target.getAttribute('data-text');
                 sendMessage();
             }
