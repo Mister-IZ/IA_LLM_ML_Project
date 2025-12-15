@@ -70,5 +70,5 @@ def get_brussels_events(category: str) -> str:
     return output.getvalue()
 
 # Exemple usage:
-csv_data = get_brussels_events('concert')
-print(csv_data)
+# csv_data = get_brussels_events('concert')
+# print(csv_data)

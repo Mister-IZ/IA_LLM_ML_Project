@@ -3,6 +3,7 @@ import threading
 from flask import Flask, render_template, request, jsonify
 from newAgent import NewAgent
 from recommender import SocialRecommender
+from like_handler import handle_like
 from dotenv import load_dotenv
 from toolsFolder.eventBriteTool import fetch_events_to_cache
 
@@ -94,8 +95,9 @@ def onboarding():
 
 @app.route('/like', methods=['POST'])
 def like_event():
-    # Simplified like handler
-    return jsonify({"status": "success", "message": "Like recorded (simplified)"})
+    """Gère le Like/Unlike - Logic moved to like_handler.py"""
+    result = handle_like(request.json, user_profile, agent, rec_engine)
+    return jsonify(result)
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -107,13 +109,32 @@ def chat():
     
     # Reset
     if user_msg.lower() in ['reset', 'recommencer', 'nouveau']:
-        if hasattr(agent, 'memory'):
+        if hasattr(agent, 'reset_preferences'):
+            agent.reset_preferences()
+        elif hasattr(agent, 'memory'):
             agent.memory.clear()
         return jsonify({'response': "Conversation réinitialisée !"})
     
-    # Basic Chat - No complex ML injection
+    # Sync user_profile to agent's internal preferences (for consistency)
+    if hasattr(agent, 'user_preferences'):
+        agent.user_preferences = user_profile["vector"].copy()
+        agent.interaction_count = max(agent.interaction_count, 2)  # Ensure ML kicks in
+    
+    # Basic Chat - The agent now handles ML internally via _detect_category_with_llm
+    # No need to inject hidden instructions anymore - it's all in the agent
     try:
         response = agent.chat(user_msg)
+        
+        # Sync back agent's updated preferences to user_profile
+        if hasattr(agent, 'user_preferences'):
+            user_profile["vector"] = agent.user_preferences.copy()
+            # Update neighbor based on new preferences
+            if rec_engine:
+                try:
+                    user_profile["neighbor"] = rec_engine.find_similar_user(user_profile["vector"])
+                except:
+                    pass
+        
         return jsonify({'response': response})
     except Exception as e:
         print(f"Error in chat: {e}")
@@ -128,7 +149,8 @@ def reset_chat():
 if __name__ == '__main__':
     # Initialize CodeCarbon Tracker
     from codecarbon import EmissionsTracker
-    tracker = EmissionsTracker(project_name="BrusselsEventAgent", output_dir=".")
+    # on_csv_write="append" prevents overwriting/renaming to .bak
+    tracker = EmissionsTracker(project_name="BrusselsEventAgent", output_dir="emissions.csv", on_csv_write="append")
     tracker.start()
     print("🌍 CodeCarbon Tracker Started!")
     

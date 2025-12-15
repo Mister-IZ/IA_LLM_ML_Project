@@ -12,6 +12,7 @@ from toolsFolder.eventBriteTool import (get_eventBrite_events, fetch_events_to_c
 from toolsFolder.eventBrusselsTool import get_brussels_events
 from toolsFolder.ticketMasterTool import get_ticketmaster_events
 from toolsFolder.helper import BrusselsToTMDict
+from recommender import SocialRecommender
 
 def fetch_all_events(category: str) -> str:
     """Fetches events from all available sources (EventBrite, Brussels API, TicketMaster).
@@ -34,6 +35,7 @@ def fetch_all_events(category: str) -> str:
         "family": ("various", "Family"),
         "festival": ("festival", "Music"), 
         "party": ("clubbing", "Music"),
+        "nature": ("various", "Family"),  # Nature events often classified as family/outdoor
     }
     
     cat_lower = category.lower().strip()
@@ -90,11 +92,31 @@ class NewAgent:
             return_messages=True,
             k=10
         )
+        
+        # === ML MODEL: K-Nearest Neighbors for user profiling ===
+        try:
+            self.recommender = SocialRecommender()
+            print("🤖 ML Recommender initialized successfully")
+        except FileNotFoundError as e:
+            print(f"⚠️ ML Recommender not available: {e}")
+            self.recommender = None
+        
+        # === USER PREFERENCE STATE (accumulated from interactions) ===
+        # These weights are updated based on user searches and likes
+        self.user_preferences = {
+            "Music": 0.0,
+            "Sport": 0.0,
+            "Cinema": 0.0,
+            "Art": 0.0,
+            "Nature": 0.0,
+        }
+        self.interaction_count = 0  # Track interactions to normalize preferences
+        
         self.tools = [
             Tool(
                 name="Unified Events Fetcher",
                 func=fetch_all_events,
-                description="Fetch events from ALL sources (EventBrite, Brussels API, TicketMaster) at once. Input should be a generic category keyword like 'music', 'sport', 'art', 'theatre', 'cinema', 'family'."
+                description="Fetch events from ALL sources (EventBrite, Brussels API, TicketMaster) at once. Input should be a generic category keyword like 'music', 'sport', 'art', 'theatre', 'cinema', 'family', 'nature'."
             )
         ]
 
@@ -108,7 +130,7 @@ class NewAgent:
             "1. **Nom de l'événement**\n"
             "📅 Date\n"
             "📍 Lieu\n"
-            "� Prix\n"
+            "💰 Prix\n"
             "🔗 Lien\n"
             "Description: Texte exact\n\n"
             "Utilise des emojis (📅, 📍, 💰, 🔗) pour structurer l'information. "
@@ -125,7 +147,135 @@ class NewAgent:
             system_message=SystemMessage(content=self.system_prompt)
         )
 
-    def _format_response_to_html(self, response: str) -> str:
+    def _detect_category_with_llm(self, user_message: str) -> str:
+        """
+        🌱 GREEN APPROACH: Use the LLM to detect the category from user intent.
+        This is more ecological than keyword matching because:
+        1. Single inference call instead of multiple regex/keyword checks
+        2. Better accuracy = fewer retry API calls
+        3. Understands context and nuance
+        """
+        prompt = f"""Classify this user request into ONE category for event search.
+        
+User message: "{user_message}"
+
+Categories (choose exactly ONE):
+- Music (concerts, festivals, DJ, live music)
+- Sport (sports events, yoga, fitness, running, matches)
+- Cinema (films, movies, screenings, projections)
+- Art (exhibitions, museums, galleries, paintings)
+- Nature (outdoor, parks, walks, gardens, hiking)
+- Theatre (plays, shows, comedy, drama)
+- Party (clubbing, nightlife, bars)
+- Family (family-friendly, kids activities)
+- General (if unclear or mixed)
+
+Reply with ONLY the category name, nothing else."""
+
+        try:
+            response = self.llm.invoke(prompt)
+            category = response.content.strip().lower() if hasattr(response, 'content') else str(response).strip().lower()
+            
+            # Map to valid categories
+            valid_categories = ['music', 'sport', 'cinema', 'art', 'nature', 'theatre', 'party', 'family', 'general']
+            for valid in valid_categories:
+                if valid in category:
+                    print(f"[DEBUG LLM Category] Detected: {valid} from message: '{user_message[:50]}...'")
+                    return valid
+            
+            return 'general'
+        except Exception as e:
+            print(f"[DEBUG] LLM category detection error: {e}")
+            return 'general'
+
+    def _update_user_preferences(self, category: str, weight: float = 0.2):
+        """
+        Update user preferences based on their searches/interactions.
+        Uses exponential moving average for smooth preference learning.
+        """
+        # Map detected category to ML feature columns
+        category_mapping = {
+            'music': 'Music',
+            'party': 'Music',
+            'sport': 'Sport',
+            'cinema': 'Cinema',
+            'theatre': 'Cinema',  # Theatre is similar to Cinema in our model
+            'art': 'Art',
+            'nature': 'Nature',
+            'family': 'Nature',  # Family activities often outdoor
+        }
+        
+        ml_category = category_mapping.get(category.lower())
+        if ml_category and ml_category in self.user_preferences:
+            # Exponential moving average update
+            self.user_preferences[ml_category] = min(1.0, 
+                self.user_preferences[ml_category] * 0.8 + weight)
+            self.interaction_count += 1
+            print(f"[DEBUG ML] Updated preferences: {self.user_preferences}")
+
+    def _get_ml_recommendation(self) -> Optional[Dict]:
+        """
+        Get personalized recommendation using K-NN model.
+        Returns the matched user profile and suggested activity type.
+        """
+        if not self.recommender or self.interaction_count < 2:
+            return None  # Need at least 2 interactions to make meaningful recommendation
+        
+        try:
+            result = self.recommender.find_similar_user(self.user_preferences)
+            print(f"[DEBUG ML] K-NN match: {result}")
+            return result
+        except Exception as e:
+            print(f"[DEBUG ML] K-NN error: {e}")
+            return None
+
+    def _get_routine_breaker(self) -> Optional[Dict]:
+        """
+        Get 'anti-routine' suggestion based on user's lowest category.
+        Encourages exploration of new activity types.
+        """
+        if not self.recommender or self.interaction_count < 3:
+            return None
+        
+        try:
+            result = self.recommender.find_routine_breaker(self.user_preferences)
+            print(f"[DEBUG ML] Routine breaker: {result}")
+            return result
+        except Exception as e:
+            print(f"[DEBUG ML] Routine breaker error: {e}")
+            return None
+
+    def _add_ml_suggestions_to_response(self, response: str) -> str:
+        """
+        Append ML-based suggestions to the response if available.
+        """
+        additions = []
+        
+        # Get K-NN recommendation
+        ml_rec = self._get_ml_recommendation()
+        if ml_rec:
+            additions.append(
+                f"\n\n🤖 **SUGGESTION PERSONNALISÉE**\n"
+                f"💡 Basé sur votre profil ({ml_rec['matched_archetype']}), "
+                f"vous pourriez aussi aimer: **{ml_rec['recommended_activity_type']}**\n"
+                f"(Similarité: {ml_rec['similarity_score']*100:.0f}%)"
+            )
+        
+        # Get routine breaker suggestion
+        routine = self._get_routine_breaker()
+        if routine:
+            additions.append(
+                f"\n\n🎲 **OSEZ LA NOUVEAUTÉ !**\n"
+                f"💡 {routine['reason']}\n"
+                f"Essayez: **{routine['activity_type']}** (style {routine['archetype']})"
+            )
+        
+        if additions:
+            response += "".join(additions)
+        
+        return response
+
+    def _format_response_to_html(self, response: str, category_context: str = "General") -> str:
         """Formate la réponse en HTML avec cartes cliquables et boutons Like (Style Agent.py)"""
         if not response:
             return "<p>...</p>"
@@ -156,6 +306,8 @@ class NewAgent:
         in_list = False
         list_items = []
         current_hidden_info = []
+        # Capitalize category to match ML vector keys (Music, Sport, Cinema, Art, Nature)
+        current_event_category = category_context.capitalize() if category_context else "General"
         
         for line in lines:
             line = line.strip()
@@ -197,8 +349,11 @@ class NewAgent:
                 content = re.sub(r'^\d+\.\s+', '', line)
                 content = content.replace('**', '<strong>', 1).replace('**', '</strong>', 1)
                 
-                # Bouton Like (Simplifié pour NewAgent)
-                like_btn = f'<button class="like-btn" onclick="toggleLike(event, this)">❤️</button>'
+                # Extract clean event title for data attribute (remove HTML tags)
+                event_title = re.sub(r'<[^>]+>', '', content).replace('"', "'")
+                
+                # Bouton Like with event title and category data
+                like_btn = f'<button class="like-btn" data-event-title="{event_title}" data-category="{current_event_category}" onclick="toggleLike(event, this)">❤️</button>'
                 
                 list_items.append(f'<li class="event-item" onclick="toggleEvent(this)">{like_btn} {content}')
                 in_list = True
@@ -241,6 +396,59 @@ class NewAgent:
         return '<div class="response-content">\n' + '\n'.join(html_parts) + '\n</div>'
 
     def chat(self, user_input: str) -> str:
+        """
+        Main chat interface with ML-enhanced recommendations.
+        
+        🌱 GREEN APPROACH:
+        1. Use LLM to detect category (single call, better accuracy)
+        2. Update user preferences based on detected category
+        3. Get personalized ML recommendations after enough interactions
+        4. All in a single flow - no redundant API calls
+        """
+        # Step 1: Detect category using LLM (green: one inference for accurate classification)
+        detected_category = self._detect_category_with_llm(user_input)
+        
+        # Step 2: Update user preferences for ML model
+        if detected_category != 'general':
+            self._update_user_preferences(detected_category, weight=0.3)
+        
+        # Step 3: Run the agent to get events
         raw_response = self.agent.run(input=user_input)
-        return self._format_response_to_html(raw_response)
+        
+        # Step 4: Add ML suggestions if user has enough interactions
+        enhanced_response = self._add_ml_suggestions_to_response(raw_response)
+        
+        # Step 5: Format to HTML with category context for like button
+        # Map detected category to ML category for like tracking
+        category_mapping = {
+            'music': 'Music', 'party': 'Music',
+            'sport': 'Sport',
+            'cinema': 'Cinema', 'theatre': 'Cinema',
+            'art': 'Art',
+            'nature': 'Nature', 'family': 'Nature',
+            'general': 'General'
+        }
+        ml_category = category_mapping.get(detected_category, 'General')
+        
+        return self._format_response_to_html(enhanced_response, ml_category)
 
+    def like_event(self, category: str):
+        """
+        Called when user likes an event. Boosts that category in preferences.
+        This allows the ML model to learn from explicit user feedback.
+        """
+        self._update_user_preferences(category, weight=0.5)  # Higher weight for explicit likes
+        print(f"[DEBUG ML] User liked event in category: {category}")
+
+    def reset_preferences(self):
+        """Reset user preferences (new session)."""
+        self.user_preferences = {
+            "Music": 0.0,
+            "Sport": 0.0,
+            "Cinema": 0.0,
+            "Art": 0.0,
+            "Nature": 0.0,
+        }
+        self.interaction_count = 0
+        self.memory.clear()
+        print("[DEBUG ML] User preferences reset")
