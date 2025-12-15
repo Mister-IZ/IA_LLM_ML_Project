@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, jsonify
 from agent import SocialAgentLangChain
 from recommender import SocialRecommender
 from dotenv import load_dotenv
+from codecarbon import track_emissions
 
 load_dotenv()
 
@@ -209,4 +210,14 @@ def reset_chat():
     return jsonify({'status': 'success'})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Initialize CodeCarbon Tracker
+    from codecarbon import EmissionsTracker
+    tracker = EmissionsTracker(project_name="BrusselsEventAgent_OldApp", output_dir=".")
+    tracker.start()
+    print("🌍 CodeCarbon Tracker Started!")
+    
+    try:
+        app.run(debug=True, port=5000, use_reloader=False)
+    finally:
+        tracker.stop()
+        print("🌍 CodeCarbon Tracker Stopped. Emissions saved to emissions.csv")
