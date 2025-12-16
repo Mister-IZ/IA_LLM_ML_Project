@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from .eventCache import event_cache  # Import global cache
 
 load_dotenv(override=True)
 EVENTBRITE_API_KEY = os.getenv("EVENTBRITE_PRIVATE_TOKEN")
@@ -15,67 +16,21 @@ embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 
 def get_embedding(text: str) -> np.ndarray:
-    """Get embedding vector for text using sentence-transformers.
-    
-    Args:
-        text: Text to embed
-        
-    Returns:
-        np.ndarray: Embedding vector
-    """
+    """Get embedding vector for text using sentence-transformers."""
     return embedding_model.encode(text)
 
-# In-memory cache with TTL using a dict
-class CacheWithTTL:
-    def __init__(self):
-        self.cache = {}
-        self.expiry = {}
-    
-    def get(self, key):
-        if key in self.cache:
-            if datetime.now() < self.expiry.get(key, datetime.now()):
-                return self.cache[key]
-            else:
-                del self.cache[key]
-                del self.expiry[key]
-        return None
-    
-    def set(self, key, value, ttl_seconds):
-        self.cache[key] = value
-        self.expiry[key] = datetime.now() + timedelta(seconds=ttl_seconds)
-
-# Initialize cache
-local_cache = CacheWithTTL()
 
 def fetch_events_to_cache(force_refresh: bool = False, cache_ttl: int = 36000) -> list:
-    """Fetch events from API and cache locally.
+    """Fetch events from EventBrite API and store in global cache."""
     
-    Args:
-        force_refresh: If True, bypass cache and fetch fresh data
-        cache_ttl: Cache time-to-live in seconds (default: 10 hours)
+    # Check if already cached
+    existing = event_cache.get_events_by_source('eventbrite')
+    if not force_refresh and len(existing) > 0:
+        print(f"[EventBrite] Using {len(existing)} cached events")
+        return existing
     
-    Returns:
-        list: List of event dictionaries
-    """
-    cache_key = 'eventbrite:events:all'
+    print("[EventBrite] Fetching fresh events from API...")
     
-    # Try to get from cache first
-    if not force_refresh:
-        cached_data = local_cache.get(cache_key)
-        if cached_data:
-            print("Using cached events from local memory")
-            return cached_data
-    
-    # Fetch fresh data from API
-    #print("Fetching fresh events from API")
-    # IdList = ['295288568', '271238193', '278600043', '279838893', '290674563', 
-    #       '294827703', '282508363','295080090', '244133673','277705833', 
-    #       '294348103', '295110583', '275248603', '287778843', '286500573',
-    #        '279399083','279399743', '279400403', '295198507','275935733',
-    #         '292626743', '283994593', '285424813', '251187193', '295487905',
-    #          '294728683', '291984493', '295103082','287935003', '295184668', 
-    #          '295258183', '286548243','295173004', '295311294', '295284070']
-
     IdList = ['295288568', '271238193', '278600043', '279838893', '290674563', 
           '294827703', '282508363','295080090', '244133673','277705833', 
           '294348103', '295110583', '275248603', '287778843', '286500573']
@@ -87,75 +42,72 @@ def fetch_events_to_cache(force_refresh: bool = False, cache_ttl: int = 36000) -
         headers = {'Authorization': f'Bearer {EVENTBRITE_API_KEY}'}
         params = {'status': 'live', 'order_by': 'start_asc'}
         
-        response = requests.get(url, headers=headers, params=params)
-        if response.status_code == 200:
-            events = response.json().get('events', [])
-            for event in events:
-                event_name = event['name']['text']
-                event_desc = event.get('description', {}).get('text', '')[:500] if event.get('description') else ""
-                
-                all_events.append({
-                    "name": event_name,
-                    "date": event['start']['local'],
-                    "url": event['url'],
-                    "description": event_desc.replace('\n', ' '),
-                    "full_text": f"{event_name}. {event_desc}"
-                })
+        try:
+            response = requests.get(url, headers=headers, params=params)
+            if response.status_code == 200:
+                events = response.json().get('events', [])
+                for event in events:
+                    event_name = event['name']['text']
+                    event_desc = event.get('description', {}).get('text', '')[:500] if event.get('description') else ""
+                    
+                    full_event = {
+                        "name": event_name,
+                        "date": event['start']['local'],
+                        "url": event['url'],
+                        "description": event_desc.replace('\n', ' '),
+                        "venue": "EventBrite Venue",
+                        "address": "",
+                        "price": "Voir le site"
+                    }
+                    
+                    # Add to global cache
+                    event_cache.add_event(full_event, 'eventbrite')
+                    all_events.append(full_event)
+        except Exception as e:
+            print(f"[EventBrite] Error fetching venue {venue_id}: {e}")
     
-    # Cache locally
-    local_cache.set(cache_key, all_events, cache_ttl)
-    print(f"Cached {len(all_events)} events in local memory")
-    
+    print(f"[EventBrite] Cached {len(all_events)} events")
     return all_events
 
 
-
-def get_eventBrite_events(category_filter: str = None, similarity_threshold: float = 0.15, force_refresh: bool = False) -> str:
-    """Get upcoming events from EventBrite as CSV, optionally filtered by category."""
+def get_eventBrite_events_for_llm(category_filter: str = None, similarity_threshold: float = 0.15) -> str:
+    """
+    🌱 GREEN VERSION: Returns minimal data for LLM (ID + name + date + short desc).
+    Full data is retrieved later via event_cache.find_event_by_name()
+    """
+    # Ensure cache is populated
+    fetch_events_to_cache()
     
-    # Get events from local cache (or fetch if not cached)
-    all_events = fetch_events_to_cache(force_refresh)
+    events = event_cache.get_events_by_source('eventbrite')
     
-    filtered_events = []
+    if not events:
+        return "Aucun événement EventBrite disponible."
     
-    # Get category embedding if filter is specified
-    category_embedding = None
+    # Filter by category using embeddings if specified
     if category_filter:
         category_embedding = get_embedding(category_filter).reshape(1, -1)
+        filtered = []
+        for event in events:
+            text = f"{event['name']}. {event.get('description', '')}"
+            event_embedding = get_embedding(text).reshape(1, -1)
+            similarity = cosine_similarity(category_embedding, event_embedding)[0][0]
+            if similarity >= similarity_threshold:
+                filtered.append(event)
+        events = filtered
     
-    for event in all_events:
-        # If category filter is set, check similarity
-        include_event = True
-        similarity_score = None
-        
-        if category_filter and category_embedding is not None:
-            event_embedding = get_embedding(event['full_text']).reshape(1, -1)
-            similarity_score = cosine_similarity(category_embedding, event_embedding)[0][0]
-            include_event = similarity_score >= similarity_threshold
-        
-        if include_event:
-            filtered_events.append({
-                "name": event['name'],
-                "date": event['date'],
-                "url": event['url'],
-                "description": event['description'],
-                "similarity": similarity_score
-            })
+    # Return MINIMAL format for LLM
+    lines = []
+    for event in events[:15]:  # Limit to 15
+        event_id = event.get('_id', 'N/A')
+        name = event['name'][:80]  # Truncate name
+        date = event.get('date', 'Date inconnue')[:16]  # Just date part
+        desc = (event.get('description', '') or '')[:80]  # Short description
+        lines.append(f"[{event_id}] {name} | {date} | {desc}")
     
-    # Build CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["name", "date", "url", "description"])
-    
-    for event in filtered_events:
-        writer.writerow([event['name'], event['date'], event['url'], event['description']])
-    
-    return output.getvalue()
+    return "--- EVENTBRITE ---\n" + "\n".join(lines)
 
 
-# Example usage:
-# Initialize the Event list on LLM start with force refresh then get the event you want
-#fetch_events_to_cache(force_refresh=True)
-# print(get_eventBrite_events(category_filter="sport"))
-# print("-------------------------")
-# print(get_eventBrite_events(category_filter="music"))
+# Keep old function for backward compatibility
+def get_eventBrite_events(category_filter: str = None, similarity_threshold: float = 0.15, force_refresh: bool = False) -> str:
+    """Legacy function - now redirects to LLM-optimized version."""
+    return get_eventBrite_events_for_llm(category_filter, similarity_threshold)

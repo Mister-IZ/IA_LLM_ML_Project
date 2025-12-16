@@ -1,17 +1,11 @@
 import requests
 import csv
 import io
+from .eventCache import event_cache  # Import global cache
 
 
-def get_brussels_events(category: str) -> str:
-    """Fetch events from Brussels API in French as CSV.
-    
-    Args:
-        category (str): Event category: 'Concerts', 'Spectacles', 'Expositions', 'Théâtre', 'Clubbing', 'Cinéma', 'Sports'
-    
-    Returns:
-        str: CSV string with event data.
-    """
+def fetch_brussels_to_cache(category: str) -> list:
+    """Fetch events from Brussels API and store in global cache."""
     
     category_map = {
         "concert": 1,
@@ -42,33 +36,64 @@ def get_brussels_events(category: str) -> str:
         "Authorization": "Bearer 097590bb-eca0-35c4-923c-a6a677f52728"
     }
 
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
-    all_events = response.json()["response"]["results"]["event"]
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        all_events = response.json()["response"]["results"]["event"]
+    except Exception as e:
+        print(f"[Brussels] API Error: {e}")
+        return []
     
-    # Build CSV
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["name", "date_start", "date_end", "venue", "address", "price", "description", "url"])
+    cached_events = []
     
     for event in all_events:
         if 'fr' in event['translations']:
             fr = event['translations']['fr']
             place_fr = event['place']['translations']['fr']
             
-            writer.writerow([
-                fr.get('name'),
-                event.get('date_start'),
-                event.get('date_end'),
-                place_fr.get('name'),
-                f"{place_fr.get('address_line1')}, {place_fr.get('address_zip')} {place_fr.get('address_city')}",
-                "Gratuit" if event.get('is_free') else "Payant",
-                (fr.get('longdescr') or fr.get('shortdescr') or "").replace('\n', ' ')[:200],
-                fr.get('agenda_url') or fr.get('website') or place_fr.get('website')
-            ])
+            full_event = {
+                "name": fr.get('name'),
+                "date": event.get('date_start'),
+                "date_start": event.get('date_start'),
+                "date_end": event.get('date_end'),
+                "venue": place_fr.get('name'),
+                "address": f"{place_fr.get('address_line1')}, {place_fr.get('address_zip')} {place_fr.get('address_city')}",
+                "price": "Gratuit" if event.get('is_free') else "Payant",
+                "description": (fr.get('longdescr') or fr.get('shortdescr') or "").replace('\n', ' ')[:300],
+                "url": fr.get('agenda_url') or fr.get('website') or place_fr.get('website')
+            }
+            
+            # Add to cache and GET the ID back
+            event_id = event_cache.add_event(full_event, 'brussels')
+            full_event['_id'] = event_id  # Store ID in the event dict
+            cached_events.append(full_event)
     
-    return output.getvalue()
+    print(f"[Brussels] Cached {len(cached_events)} events for category '{category}'")
+    return cached_events
 
-# Exemple usage:
-# csv_data = get_brussels_events('concert')
-# print(csv_data)
+
+def get_brussels_events_for_llm(category: str) -> str:
+    """
+    🌱 GREEN VERSION: Returns minimal data for LLM.
+    """
+    events = fetch_brussels_to_cache(category)
+    
+    if not events:
+        return "Aucun événement Brussels disponible."
+    
+    # Return MINIMAL format for LLM
+    lines = []
+    for event in events[:15]:
+        event_id = event.get('_id', 'N/A')
+        name = (event.get('name') or 'Unknown')[:80]
+        date = (event.get('date_start') or 'Date inconnue')[:16]
+        desc = (event.get('description') or '')[:80]
+        lines.append(f"[{event_id}] {name} | {date} | {desc}")
+    
+    return "--- BRUSSELS API ---\n" + "\n".join(lines)
+
+
+# Legacy function
+def get_brussels_events(category: str) -> str:
+    """Legacy function - now redirects to LLM-optimized version."""
+    return get_brussels_events_for_llm(category)
