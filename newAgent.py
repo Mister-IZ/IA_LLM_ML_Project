@@ -163,7 +163,7 @@ def get_event_details_by_ids(event_ids: str) -> str:
     )
 
 
-class NewNewAgent:
+class NewAgent:
     def __init__(self):
         self.llm = ChatMistralAI(
             model="mistral-small-latest",

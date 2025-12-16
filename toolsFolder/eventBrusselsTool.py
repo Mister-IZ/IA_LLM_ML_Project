@@ -2,7 +2,9 @@ import requests
 import csv
 import io
 from .eventCache import event_cache  # Import global cache
+import os
 
+BRUSSELS_BEARER_TOKEN = os.getenv("BRUSSELS_BEARER_TOKEN")
 
 def fetch_brussels_to_cache(category: str) -> list:
     """Fetch events from Brussels API and store in global cache."""
@@ -27,15 +29,24 @@ def fetch_brussels_to_cache(category: str) -> list:
         "meeting": 254
     }
     
-    mainCategory = category_map.get(category.lower(), 74)
+    if category in category_map:
+        mainCategory = category_map.get(category.lower(), 84)
+        
+        url = "https://api.brussels:443/api/agenda/0.0.1/events/category"
+        params = {"mainCategory": mainCategory, "page": 1}
+        headers = {
+            "accept": "application/json",
+            "Authorization": "Bearer 097590bb-eca0-35c4-923c-a6a677f52728"
+        }
+    #If the LLM fail with the cateogry we just return the first page of events    
+    else:
+        url = "https://api.brussels:443/api/agenda/0.0.1/events?"
+        headers = {
+            "accept": "application/json",
+            "authorization Bearer": BRUSSELS_BEARER_TOKEN
+        }
+        params = {"page": 1}
     
-    url = "https://api.brussels:443/api/agenda/0.0.1/events/category"
-    params = {"mainCategory": mainCategory, "page": 1}
-    headers = {
-        "accept": "application/json",
-        "Authorization": "Bearer 097590bb-eca0-35c4-923c-a6a677f52728"
-    }
-
     try:
         response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()
@@ -67,6 +78,8 @@ def fetch_brussels_to_cache(category: str) -> list:
             event_id = event_cache.add_event(full_event, 'brussels')
             full_event['_id'] = event_id  # Store ID in the event dict
             cached_events.append(full_event)
+
+
     
     print(f"[Brussels] Cached {len(cached_events)} events for category '{category}'")
     return cached_events

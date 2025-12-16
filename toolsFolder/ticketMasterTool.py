@@ -12,20 +12,32 @@ TICKETMASTER_API_KEY = os.getenv("TICKETMASTER_CONSUMER_KEY")
 
 def fetch_ticketmaster_to_cache(classificationName: str) -> list:
     """Fetch events from Ticketmaster API and store in global cache."""
+
+    classificationList = [ "music", "sports", "arts", "film", "miscellaneous" ]
     
     if not TICKETMASTER_API_KEY:
         print("[TicketMaster] ERROR: Missing API key")
         return []
     
-    url = 'https://app.ticketmaster.com/discovery/v2/events.json'
-    params = {
-        'apikey': TICKETMASTER_API_KEY,
-        'countryCode': 'BE',
-        'size': 25,
-        'sort': 'date,asc',
-        'city': 'Brussels',
-        'classificationName': classificationName
-    }
+    if classificationName.lower() in classificationList:
+        url = 'https://app.ticketmaster.com/discovery/v2/events.json'
+        params = {
+            'apikey': TICKETMASTER_API_KEY,
+            'countryCode': 'BE',
+            'size': 25,
+            'sort': 'date,asc',
+            'city': 'Brussels',
+            'classificationName': classificationName
+        }
+    else:
+        url = 'https://app.ticketmaster.com/discovery/v2/events.json'
+        params = {
+            'apikey': TICKETMASTER_API_KEY,
+            'countryCode': 'BE',
+            'size': 25,
+            'sort': 'date,asc',
+            'city': 'Brussels'
+        }
 
     try:
         response = requests.get(url, params=params)
