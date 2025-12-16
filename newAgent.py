@@ -1,18 +1,15 @@
 import os
 import re
+import random
 from typing import List, Dict, Optional, Tuple
 from langchain.agents import AgentType, initialize_agent, Tool
 from langchain_mistralai import ChatMistralAI
 from langchain.memory import ConversationBufferMemory
-from langchain.prompts import MessagesPlaceholder
 from langchain.schema import SystemMessage
-
 
 from toolsFolder.eventBriteTool import (get_eventBrite_events, fetch_events_to_cache)
 from toolsFolder.eventBrusselsTool import get_brussels_events
 from toolsFolder.ticketMasterTool import get_ticketmaster_events
-from toolsFolder.helper import BrusselsToTMDict
-from recommender import SocialRecommender
 
 def fetch_all_events(category: str) -> str:
     """Fetches events from all available sources (EventBrite, Brussels API, TicketMaster).
@@ -40,12 +37,26 @@ def fetch_all_events(category: str) -> str:
     
     cat_lower = category.lower().strip()
     
-    if cat_lower in mapping:
-        categoryBru, categoryTM = mapping[cat_lower]
-    else:
-        # Default fallback if not found in map
-        categoryBru = category
-        categoryTM = category
+    # VALIDATION: Check if category is valid
+    if cat_lower not in mapping:
+        valid_categories = list(mapping.keys())
+        return (
+            f"CATEGORY_ERROR: La catégorie '{category}' n'est pas reconnue.\n\n"
+            f"📋 **Catégories valides :**\n"
+            f"• 🎵 music (concerts, festivals)\n"
+            f"• 🏃 sport (événements sportifs, fitness)\n"
+            f"• 🎨 art (expositions, galeries)\n"
+            f"• 🎭 culture (événements culturels)\n"
+            f"• 🎪 theatre (théâtre, spectacles)\n"
+            f"• 🎬 cinema (films, projections)\n"
+            f"• 👨‍👩‍👧 family (activités familiales)\n"
+            f"• 🎉 festival (festivals divers)\n"
+            f"• 🎊 party (soirées, clubbing)\n"
+            f"• 🌳 nature (activités en plein air)\n\n"
+            f"💡 **Sois plus explicite !** Utilise l'un de ces termes dans ta recherche."
+        )
+    
+    categoryBru, categoryTM = mapping[cat_lower]
         
     results = []
     
@@ -93,25 +104,6 @@ class NewAgent:
             k=10
         )
         
-        # === ML MODEL: K-Nearest Neighbors for user profiling ===
-        try:
-            self.recommender = SocialRecommender()
-            print("🤖 ML Recommender initialized successfully")
-        except FileNotFoundError as e:
-            print(f"⚠️ ML Recommender not available: {e}")
-            self.recommender = None
-        
-        # === USER PREFERENCE STATE (accumulated from interactions) ===
-        # These weights are updated based on user searches and likes
-        self.user_preferences = {
-            "Music": 0.0,
-            "Sport": 0.0,
-            "Cinema": 0.0,
-            "Art": 0.0,
-            "Nature": 0.0,
-        }
-        self.interaction_count = 0  # Track interactions to normalize preferences
-        
         self.tools = [
             Tool(
                 name="Unified Events Fetcher",
@@ -123,18 +115,25 @@ class NewAgent:
         self.system_prompt = (
             "You are an event recommendation assistant. Use the 'Unified Events Fetcher' tool to find events. "
             "This tool returns events from multiple sources. "
-            "Analyze the results from ALL sources and select the 5 BEST events to recommend to the user. "
-            "Ensure you pick a diverse set of events if possible. IF POSSIBLE 2 FROM BRUSSELS API, 2 FROM TICKETMASTER AND 1 FROM EVENTBRITE. "
+            "\n\n"
+            "**RÈGLES STRICTES :**\n"
+            "1. Sélectionne EXACTEMENT 5 événements (pas plus, pas moins)\n"
+            "2. Diversifie les sources : 2 Brussels API + 2 Ticketmaster + 1 EventBrite (si possible)\n"
+            "3. Choisis les événements les plus pertinents et intéressants\n"
+            "4. Si moins de 5 événements disponibles, affiche seulement ceux disponibles\n"
             "\n\n"
             "**FORMAT DE RÉPONSE STRICT :**\n"
             "1. **Nom de l'événement**\n"
             "📅 Date\n"
             "📍 Lieu\n"
             "💰 Prix\n"
-            "🔗 Lien\n"
+            "🔗 Lien (URL complète)\n"
             "Description: Texte exact\n\n"
-            "Utilise des emojis (📅, 📍, 💰, 🔗) pour structurer l'information. "
-            "IMPORTANT: Si un lien (URL) est disponible dans les données, tu DOIS l'inclure après l'emoji 🔗."
+            "**IMPORTANT :**\n"
+            "- Utilise TOUJOURS les emojis (📅, 📍, 💰, 🔗) sur des LIGNES SÉPARÉES\n"
+            "- La Description et le 🔗 Lien DOIVENT être sur des lignes séparées\n"
+            "- Si un lien (URL) est disponible, tu DOIS l'inclure après 🔗\n"
+            "- Garde le texte exact des descriptions sans les raccourcir"
         )
 
 
@@ -147,46 +146,23 @@ class NewAgent:
             system_message=SystemMessage(content=self.system_prompt)
         )
 
-    def _detect_category_with_llm(self, user_message: str) -> str:
+    def _detect_profile_context(self, user_message: str) -> str:
         """
-        🌱 GREEN APPROACH: Use the LLM to detect the category from user intent.
-        This is more ecological than keyword matching because:
-        1. Single inference call instead of multiple regex/keyword checks
-        2. Better accuracy = fewer retry API calls
-        3. Understands context and nuance
+        Déduit un profil basique basé sur le message pour les suggestions ML.
+        Profiles: Fêtard, Culturel, Sportif, Cinéphile, Chill
         """
-        prompt = f"""Classify this user request into ONE category for event search.
-        
-User message: "{user_message}"
-
-Categories (choose exactly ONE):
-- Music (concerts, festivals, DJ, live music)
-- Sport (sports events, yoga, fitness, running, matches)
-- Cinema (films, movies, screenings, projections)
-- Art (exhibitions, museums, galleries, paintings)
-- Nature (outdoor, parks, walks, gardens, hiking)
-- Theatre (plays, shows, comedy, drama)
-- Party (clubbing, nightlife, bars)
-- Family (family-friendly, kids activities)
-- General (if unclear or mixed)
-
-Reply with ONLY the category name, nothing else."""
-
-        try:
-            response = self.llm.invoke(prompt)
-            category = response.content.strip().lower() if hasattr(response, 'content') else str(response).strip().lower()
-            
-            # Map to valid categories
-            valid_categories = ['music', 'sport', 'cinema', 'art', 'nature', 'theatre', 'party', 'family', 'general']
-            for valid in valid_categories:
-                if valid in category:
-                    print(f"[DEBUG LLM Category] Detected: {valid} from message: '{user_message[:50]}...'")
-                    return valid
-            
-            return 'general'
-        except Exception as e:
-            print(f"[DEBUG] LLM category detection error: {e}")
-            return 'general'
+        msg = user_message.lower()
+        if any(x in msg for x in ['fête', 'soirée', 'boite', 'party', 'danse', 'club', 'sortir']): 
+            return "Fêtard"
+        if any(x in msg for x in ['musée', 'expo', 'art', 'théâtre', 'spectacle', 'galerie']): 
+            return "Culturel"
+        if any(x in msg for x in ['sport', 'match', 'courir', 'vélo', 'fitness', 'athlét']): 
+            return "Sportif"
+        if any(x in msg for x in ['film', 'ciné', 'cinéma', 'projection']): 
+            return "Cinéphile"
+        if any(x in msg for x in ['parc', 'balade', 'calme', 'nature', 'détente', 'promenade']): 
+            return "Chill"
+        return "Curieux"  # Défaut
 
     def _update_user_preferences(self, category: str, weight: float = 0.2):
         """
@@ -213,67 +189,121 @@ Reply with ONLY the category name, nothing else."""
             self.interaction_count += 1
             print(f"[DEBUG ML] Updated preferences: {self.user_preferences}")
 
-    def _get_ml_recommendation(self) -> Optional[Dict]:
+    def _generate_ml_suggestion(self, current_results: str, profile: str) -> str:
         """
-        Get personalized recommendation using K-NN model.
-        Returns the matched user profile and suggested activity type.
+        Génère une suggestion personnalisée en cherchant le MEILLEUR événement
+        parmi les résultats actuels trouvés par l'agent.
         """
-        if not self.recommender or self.interaction_count < 2:
-            return None  # Need at least 2 interactions to make meaningful recommendation
-        
-        try:
-            result = self.recommender.find_similar_user(self.user_preferences)
-            print(f"[DEBUG ML] K-NN match: {result}")
-            return result
-        except Exception as e:
-            print(f"[DEBUG ML] K-NN error: {e}")
-            return None
+        if not current_results or len(current_results) < 50:
+            print("[DEBUG ML] Pas assez de résultats pour suggestion ML")
+            return ""
 
-    def _get_routine_breaker(self) -> Optional[Dict]:
-        """
-        Get 'anti-routine' suggestion based on user's lowest category.
-        Encourages exploration of new activity types.
-        """
-        if not self.recommender or self.interaction_count < 3:
-            return None
-        
-        try:
-            result = self.recommender.find_routine_breaker(self.user_preferences)
-            print(f"[DEBUG ML] Routine breaker: {result}")
-            return result
-        except Exception as e:
-            print(f"[DEBUG ML] Routine breaker error: {e}")
-            return None
+        prompt = f"""CONTEXTE: L'utilisateur a un profil de type '{profile}'.
+TÂCHE: Parmi les événements suivants, lequel est LE MEILLEUR pour lui ?
 
-    def _add_ml_suggestions_to_response(self, response: str) -> str:
+RÉSULTATS:
+{current_results[:2000]}
+
+INSTRUCTION: 
+1. Isole UN SEUL événement de la liste
+2. Explique en UNE PHRASE pourquoi ça correspond à son profil
+
+FORMAT DE RÉPONSE ATTENDU:
+🤖 **SUGGESTION PERSONNALISÉE ({profile})**
+💡 *[Une phrase courte expliquant le choix]*
+1. **[Titre exact]**
+📅 [Date]
+📍 [Lieu]
+💰 [Prix]
+🔗 [Lien]
+Description: [Description]"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            suggestion = str(response.content) if hasattr(response, 'content') else str(response)
+            print(f"[DEBUG ML] Suggestion générée: {suggestion[:100]}...")
+            return "\n\n" + suggestion
+        except Exception as e:
+            print(f"[DEBUG ML] Erreur suggestion personnalisée: {e}")
+            return ""
+
+    def _generate_novelty(self, profile: str) -> str:
         """
-        Append ML-based suggestions to the response if available.
+        Génère la section 'Osez la nouveauté' en cherchant une catégorie opposée
+        et en sélectionnant UN vrai événement via LLM.
         """
-        additions = []
+        # 1. Définir les catégories opposées pour chaque profil
+        opposites = {
+            "Fêtard": ["nature", "art"],
+            "Sportif": ["art", "theatre"],
+            "Culturel": ["sport", "party"],
+            "Cinéphile": ["sport", "nature"],
+            "Chill": ["party", "sport"],
+            "Curieux": ["art", "sport"]
+        }
         
-        # Get K-NN recommendation
-        ml_rec = self._get_ml_recommendation()
-        if ml_rec:
-            additions.append(
-                f"\n\n🤖 **SUGGESTION PERSONNALISÉE**\n"
-                f"💡 Basé sur votre profil ({ml_rec['matched_archetype']}), "
-                f"vous pourriez aussi aimer: **{ml_rec['recommended_activity_type']}**\n"
-                f"(Similarité: {ml_rec['similarity_score']*100:.0f}%)"
-            )
+        # 2. Choisir une catégorie opposée aléatoire
+        import random
+        choices = opposites.get(profile, ["art"])
+        target_category = random.choice(choices)
         
-        # Get routine breaker suggestion
-        routine = self._get_routine_breaker()
-        if routine:
-            additions.append(
-                f"\n\n🎲 **OSEZ LA NOUVEAUTÉ !**\n"
-                f"💡 {routine['reason']}\n"
-                f"Essayez: **{routine['activity_type']}** (style {routine['archetype']})"
-            )
+        print(f"[DEBUG NOVELTY] Profil: {profile} -> Catégorie opposée: {target_category}")
         
-        if additions:
-            response += "".join(additions)
+        # 3. Chercher des événements dans cette catégorie (VRAIS événements des APIs)
+        events_text = fetch_all_events(target_category)
         
-        return response
+        if "Aucun événement" in events_text or "CATEGORY_ERROR" in events_text:
+            print(f"[DEBUG NOVELTY] Aucun événement trouvé pour {target_category}")
+            return ""
+
+        # 4. Demander au LLM de choisir UN événement et le présenter
+        prompt = f"""CONTEXTE: L'utilisateur a un profil '{profile}'.
+TÂCHE: Propose-lui UNE activité '{target_category}' pour sortir de sa routine (Osez la nouveauté!).
+
+RÉSULTATS DISPONIBLES:
+{events_text[:2000]}
+
+INSTRUCTION:
+1. Choisis UN SEUL événement pertinent dans la liste
+2. Explique en UNE PHRASE pourquoi c'est bien pour changer
+
+FORMAT DE RÉPONSE ATTENDU:
+🎲 **OSEZ LA NOUVEAUTÉ !**
+💡 *[Une phrase courte expliquant pourquoi ça le change]*
+1. **[Titre exact]**
+📅 [Date]
+📍 [Lieu]
+💰 [Prix]
+🔗 [Lien]
+Description: [Description]"""
+
+        try:
+            response = self.llm.invoke(prompt)
+            novelty = str(response.content) if hasattr(response, 'content') else str(response)
+            print(f"[DEBUG NOVELTY] Générée: {novelty[:100]}...")
+            return "\n\n" + novelty
+        except Exception as e:
+            print(f"[DEBUG NOVELTY] Erreur: {e}")
+            return ""
+
+    def _add_ml_suggestions_to_response(self, response: str, profile: str) -> str:
+        """
+        Ajoute les suggestions ML en utilisant des VRAIS événements des APIs.
+        1. Suggestion personnalisée: LLM choisit le meilleur événement des résultats actuels
+        2. Osez la Nouveauté: LLM cherche une catégorie opposée au profil
+        """
+        enhanced = response
+        
+        # 1. Suggestion personnalisée (parmi les résultats courants trouvés)
+        if "📅" in response or "**" in response:  # Vérifier qu'il y a des résultats
+            ml_suggestion = self._generate_ml_suggestion(response, profile)
+            enhanced += ml_suggestion
+        
+        # 2. Osez la Nouveauté (chercher une catégorie opposée)
+        novelty_section = self._generate_novelty(profile)
+        enhanced += novelty_section
+        
+        return enhanced
 
     def _format_response_to_html(self, response: str, category_context: str = "General") -> str:
         """Formate la réponse en HTML avec cartes cliquables et boutons Like (Style Agent.py)"""
@@ -399,56 +429,33 @@ Reply with ONLY the category name, nothing else."""
         """
         Main chat interface with ML-enhanced recommendations.
         
-        🌱 GREEN APPROACH:
-        1. Use LLM to detect category (single call, better accuracy)
-        2. Update user preferences based on detected category
-        3. Get personalized ML recommendations after enough interactions
-        4. All in a single flow - no redundant API calls
+        FLUX:
+        1. Déduire le profil de l'utilisateur (Fêtard, Culturel, etc.)
+        2. Exécuter l'agent pour les résultats principaux
+        3. Ajouter Suggestion Personnalisée (LLM choisit le meilleur des résultats)
+        4. Ajouter Osez la Nouveauté (LLM cherche catégorie opposée)
+        5. Formatter en HTML
         """
-        # Step 1: Detect category using LLM (green: one inference for accurate classification)
-        detected_category = self._detect_category_with_llm(user_input)
-        
-        # Step 2: Update user preferences for ML model
-        if detected_category != 'general':
-            self._update_user_preferences(detected_category, weight=0.3)
-        
-        # Step 3: Run the agent to get events
-        raw_response = self.agent.run(input=user_input)
-        
-        # Step 4: Add ML suggestions if user has enough interactions
-        enhanced_response = self._add_ml_suggestions_to_response(raw_response)
-        
-        # Step 5: Format to HTML with category context for like button
-        # Map detected category to ML category for like tracking
-        category_mapping = {
-            'music': 'Music', 'party': 'Music',
-            'sport': 'Sport',
-            'cinema': 'Cinema', 'theatre': 'Cinema',
-            'art': 'Art',
-            'nature': 'Nature', 'family': 'Nature',
-            'general': 'General'
-        }
-        ml_category = category_mapping.get(detected_category, 'General')
-        
-        return self._format_response_to_html(enhanced_response, ml_category)
-
-    def like_event(self, category: str):
-        """
-        Called when user likes an event. Boosts that category in preferences.
-        This allows the ML model to learn from explicit user feedback.
-        """
-        self._update_user_preferences(category, weight=0.5)  # Higher weight for explicit likes
-        print(f"[DEBUG ML] User liked event in category: {category}")
-
-    def reset_preferences(self):
-        """Reset user preferences (new session)."""
-        self.user_preferences = {
-            "Music": 0.0,
-            "Sport": 0.0,
-            "Cinema": 0.0,
-            "Art": 0.0,
-            "Nature": 0.0,
-        }
-        self.interaction_count = 0
-        self.memory.clear()
-        print("[DEBUG ML] User preferences reset")
+        try:
+            # Step 1: Déduire le profil de l'utilisateur
+            profile = self._detect_profile_context(user_input)
+            print(f"[DEBUG] Profil détecté: {profile}")
+            
+            # Step 2: Exécuter l'agent principal pour trouver les événements
+            raw_response = self.agent.run(input=user_input)
+            
+            # Step 2.5: Vérifier s'il y a une erreur de catégorie
+            if "CATEGORY_ERROR:" in raw_response:
+                return self._format_response_to_html(raw_response.replace("CATEGORY_ERROR:", "❌"), "General")
+            
+            # Step 3: Ajouter les suggestions ML (avec VRAIS événements)
+            enhanced_response = self._add_ml_suggestions_to_response(raw_response, profile)
+            
+            # Step 4: Formatter en HTML
+            return self._format_response_to_html(enhanced_response, "Music")
+            
+        except Exception as e:
+            print(f"[ERROR] Erreur dans chat(): {e}")
+            import traceback
+            traceback.print_exc()
+            return f"<p>Une erreur est survenue: {str(e)}</p>"
