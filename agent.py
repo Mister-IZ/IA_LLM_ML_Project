@@ -227,6 +227,8 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         emoji = emoji or '🎯'
 
         result = f"{emoji} **ACTIVITÉS À BRUXELLES :**\n\n"
+        # Injector le tag de catégorie AU DÉBUT pour que le parser l'attrape d'abord
+        result += f"<!-- CATEGORY:{ml_category} -->\n\n"
 
         for idx, event in enumerate(events, 1):
             title = event.get('title') or "Événement"
@@ -244,8 +246,7 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
                 result += f"🔗 {url}\n"
             else:
                 result += "🔗 Lien non disponible\n"
-            result += f"Description: {description}\n"
-            result += f"<!-- CATEGORY:{ml_category} -->\n\n"
+            result += f"Description: {description}\n\n"
 
         total_pages = max(1, (total_events + 7) // 8)
         current_page = self.current_state.get("current_page", 1)

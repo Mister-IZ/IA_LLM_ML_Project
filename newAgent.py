@@ -196,6 +196,40 @@ class NewAgent:
             cleaned = match.group(2).strip()
         return profile, cleaned
 
+    def _detect_category_with_llm(self, text: str) -> str:
+        """
+        Utilise le LLM pour détecter la catégorie d'un texte.
+        Retourne: 'music', 'sport', 'art', 'cinema', 'theatre', 'nature', ou 'general'
+        """
+        if not text or len(text) < 3:
+            return 'general'
+        
+        prompt = f"""Classifie ce texte dans UNE SEULE catégorie:
+Texte: "{text}"
+
+Catégories disponibles:
+- music (concerts, festivals, DJ, orchestres, chorales)
+- sport (match, yoga, fitness, randon née, sport)
+- cinema (films, projections, cinéma, documentaires)
+- theatre (spectacles, théâtre, pièces)
+- art (exposition, musée, galerie, peinture, sculpture)
+- nature (parc, balade, jardin, forêt, nature)
+- general (autre)
+
+Réponds UNIQUEMENT avec LE MOT DE LA CATÉGORIE (pas d'explication)."""
+
+        try:
+            response = self.llm.invoke(prompt)
+            category = str(response.content).strip().lower() if hasattr(response, 'content') else str(response).strip().lower()
+            # Nettoyer la réponse
+            for valid_cat in ['music', 'sport', 'cinema', 'theatre', 'art', 'nature', 'general']:
+                if valid_cat in category:
+                    return valid_cat
+            return 'general'
+        except Exception as e:
+            print(f"[DEBUG LLM] Erreur détection catégorie: {e}")
+            return 'general'
+
     def _update_user_preferences(self, category: str, weight: float = 0.2):
         """
         Update user preferences based on their searches/interactions.
@@ -488,38 +522,101 @@ CONTRAINTES :
 
         return '<div class="response-content">\n' + '\n'.join(html_parts) + '\n</div>'
 
+    def _is_activity_search(self, message: str) -> bool:
+        """Détecte si le message est une demande d'activités ou une question normale."""
+        msg_lower = message.lower().strip()
+        
+        # Mots-clés de recherche d'activités
+        activity_keywords = [
+            'activ', 'événe', 'sortie', 'cherch', 'veux', 'propos', 'trouv',
+            'ciné', 'cinema', 'cinéma', 'sport', 'musi', 'musique', 'concert', 'expo', 'théâtre', 'theatre',
+            'faire', 'voir', 'cuisine', 'nature', 'gratuit', 'film', 'art', 'show', 'spectacle',
+            'match', 'galerie', 'musée', 'atelier', 'cours', 'balade', 'parc',
+            'aller', 'jouer', 'danser', 'chanter', 'courir', 'marcher', 'randonn'
+        ]
+        
+        # Vérifier si c'est une demande d'activités
+        is_activity = any(kw in msg_lower for kw in activity_keywords)
+        return is_activity
+
+    def _respond_to_casual_question(self, message: str) -> str:
+        """Répond poliment aux questions non-liées aux activités."""
+        prompt = f"""Tu es un assistant social bienveillant à Bruxelles. 
+L'utilisateur te pose une question qui n'a rien à voir avec les activités/événements.
+Réponds poliment, chaleureusement et brièvement en français.
+
+Question: "{message}"
+
+Réponds en 1-2 phrases max, sois naturel et sympa."""
+
+        try:
+            response = self.llm.invoke(prompt)
+            text = response.content if hasattr(response, 'content') else str(response)
+            return f'<div class="response-content"><p>{text}</p></div>'
+        except Exception as e:
+            print(f"[DEBUG] Erreur réponse casual: {e}")
+            return '<div class="response-content"><p>Bonjour ! Comment puis-je t\'aider à trouver une activité à Bruxelles ? 😊</p></div>'
+
+    def _category_context_from_message(self, message: str) -> str:
+        """Déduit une catégorie normalisée pour les likes (Music/Sport/Cinema/Art/Nature/General)."""
+        detected = self._detect_category_with_llm(message)
+        mapping = {
+            'music': 'Music',
+            'sport': 'Sport',
+            'cinema': 'Cinema',
+            'theatre': 'Cinema',
+            'art': 'Art',
+            'nature': 'Nature',
+        }
+        return mapping.get(detected, 'General')
+
     def chat(self, user_input: str) -> str:
         """
         Main chat interface with ML-enhanced recommendations.
         
         FLUX:
-        1. Déduire le profil de l'utilisateur (Fêtard, Culturel, etc.)
-        2. Exécuter l'agent pour les résultats principaux
-        3. Ajouter Suggestion Personnalisée (LLM choisit le meilleur des résultats)
-        4. Ajouter Osez la Nouveauté (LLM cherche catégorie opposée)
-        5. Formatter en HTML
+        1. Détecter si c'est une demande d'activités ou une question normale
+        2. Si question normale → répondre poliment directement
+        3. Si demande d'activités:
+           - Déduire le profil de l'utilisateur (Fêtard, Culturel, etc.)
+           - Exécuter l'agent pour les résultats principaux
+           - Ajouter Suggestion Personnalisée (LLM choisit le meilleur des résultats)
+           - Ajouter Osez la Nouveauté (LLM cherche catégorie opposée)
+           - Formatter en HTML
         """
         try:
             # Step 0: Profil optionnel passé via tag [PROFILE:XXX]
             tag_profile, clean_msg = self._extract_profile_tag(user_input)
-            profile = tag_profile or self._detect_profile_context(user_input)
-            print(f"[DEBUG] Profil détecté: {profile} (tag={tag_profile})")
             
-            # Step 2: Exécuter l'agent principal pour trouver les événements
+            # Step 1: Vérifier si c'est une demande d'activités
+            if not self._is_activity_search(clean_msg):
+                print(f"[DEBUG] Question casual détectée: '{clean_msg[:50]}...'")
+                return self._respond_to_casual_question(clean_msg)
+            
+            # Step 2: C'est une demande d'activités
+            profile = tag_profile or self._detect_profile_context(clean_msg)
+            print(f"[DEBUG] Demande d'activités - Profil détecté: {profile} (tag={tag_profile})")
+            category_context = self._category_context_from_message(clean_msg)
+            print(f"[DEBUG] Catégorie contexte pour likes: {category_context}")
+            
+            # Step 3: Exécuter l'agent principal pour trouver les événements
             raw_response = self.agent.run(input=clean_msg)
             
-            # Step 2.1: Forcer le reformatage par LLM (max 5 événements)
+            # Step 3.1: Forcer le reformatage par LLM (max 5 événements)
             raw_response = self._force_reformat_with_llm(raw_response)
             
-            # Step 2.5: Vérifier s'il y a une erreur de catégorie
+            # Step 3.5: Vérifier s'il y a une erreur de catégorie
             if "CATEGORY_ERROR:" in raw_response:
-                return self._format_response_to_html(raw_response.replace("CATEGORY_ERROR:", "❌"), "General")
+                return self._format_response_to_html(raw_response.replace("CATEGORY_ERROR:", "❌"), category_context)
             
-            # Step 3: Ajouter les suggestions ML (avec VRAIS événements)
+            # Step 4: Ajouter les suggestions ML (avec VRAIS événements)
             enhanced_response = self._add_ml_suggestions_to_response(raw_response, profile)
+
+            # Injecter la catégorie en commentaire pour le parser HTML (sécurité)
+            enhanced_response = f"<!-- CATEGORY:{category_context} -->\n" + enhanced_response
             
-            # Step 4: Formatter en HTML
-            return self._format_response_to_html(enhanced_response, "General")
+            # Step 5: Formatter en HTML
+            return self._format_response_to_html(enhanced_response, category_context)
             
         except Exception as e:
             print(f"[ERROR] Erreur dans chat(): {e}")

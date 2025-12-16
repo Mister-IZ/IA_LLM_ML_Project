@@ -380,7 +380,7 @@
                     console.error("Erreur:", data.message);
                 }
             } catch(e) { 
-                console.error(e);
+                console.error("❌ ERREUR FETCH:", e);
                 // Revert le toggle en cas d'erreur
                 btn.classList.toggle('liked');
                 btn.innerHTML = '❤️';

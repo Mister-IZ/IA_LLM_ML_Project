@@ -73,7 +73,11 @@ def handle_like(data, user_profile, agent=None, rec_engine=None):
     # --- 4. No category found ---
     if not cat_found:
         print("⚠️ Aucune catégorie détectée pour ce Like.")
-        return {"status": "ignored", "reason": "Catégorie indéterminée"}
+        return {
+            "status": "ignored", 
+            "message": "Catégorie indéterminée",
+            "reason": "Catégorie indéterminée"
+        }
     
     # --- 5. Update user vector ---
     print(f"[DEBUG LIKE] cat_found = {cat_found}, updating vector...")
@@ -111,6 +115,7 @@ def handle_like(data, user_profile, agent=None, rec_engine=None):
     
     response_data = {
         "status": "success",
+        "message": f"✅ {action.capitalize()}d {cat_found}",
         "action": action,
         "updated_category": cat_found,
         "new_vector": user_profile["vector"],

@@ -6,6 +6,7 @@ from recommender import SocialRecommender
 from like_handler import handle_like
 from dotenv import load_dotenv
 from toolsFolder.eventBriteTool import fetch_events_to_cache
+from codecarbon import EmissionsTracker
 
 load_dotenv()
 
