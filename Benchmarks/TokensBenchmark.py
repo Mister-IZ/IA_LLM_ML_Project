@@ -7,7 +7,7 @@ load_dotenv()
 
 from langchain_community.callbacks import get_openai_callback
 from langchain_core.callbacks import BaseCallbackHandler
-from newAgent import NewAgent
+from testAgent import testAgent
 
 # Custom callback to track Mistral tokens
 class TokenCounterCallback(BaseCallbackHandler):
@@ -69,7 +69,7 @@ questions = [
 
 # Create callback and agent
 token_counter = TokenCounterCallback()
-agent = NewAgent()
+agent = testAgent()
 
 # Add callback to the LLM
 agent.llm.callbacks = [token_counter]
@@ -114,3 +114,9 @@ print(f"\n💰 Estimated cost: ${estimated_cost:.4f}")
 # Total tokens: 115493
 #Prompt tokens: 109642
 #Completion tokens: 5851
+
+#Resultats after cache (16/12/24/22:40):
+#Sur 10 questions: 19 api calls (wtff?)
+# Prompt tokens: 11699
+#Completion tokens 701
+# Total tokens: 13400

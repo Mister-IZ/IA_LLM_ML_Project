@@ -3,8 +3,11 @@ import csv
 import io
 from .eventCache import event_cache  # Import global cache
 import os
+from dotenv import load_dotenv
 
-BRUSSELS_BEARER_TOKEN = os.getenv("BRUSSELS_BEARER_TOKEN")
+load_dotenv(override=True)  # Load .env file
+BRUSSELS_BEARER_TOKEN = os.getenv("BRUSSELS_API_BEARER_TOKEN")
+print("Brussels Bearer Token Loaded:", BRUSSELS_BEARER_TOKEN)
 
 def fetch_brussels_to_cache(category: str) -> list:
     """Fetch events from Brussels API and store in global cache."""
@@ -29,21 +32,21 @@ def fetch_brussels_to_cache(category: str) -> list:
         "meeting": 254
     }
     
-    if category in category_map:
+    if category.lower() in category_map:
         mainCategory = category_map.get(category.lower(), 84)
         
         url = "https://api.brussels:443/api/agenda/0.0.1/events/category"
         params = {"mainCategory": mainCategory, "page": 1}
         headers = {
             "accept": "application/json",
-            "Authorization": "Bearer 097590bb-eca0-35c4-923c-a6a677f52728"
+            "Authorization": "Bearer " + BRUSSELS_BEARER_TOKEN
         }
     #If the LLM fail with the cateogry we just return the first page of events    
     else:
         url = "https://api.brussels:443/api/agenda/0.0.1/events?"
         headers = {
             "accept": "application/json",
-            "authorization Bearer": BRUSSELS_BEARER_TOKEN
+            "Authorization": "Bearer " + BRUSSELS_BEARER_TOKEN
         }
         params = {"page": 1}
     
@@ -110,3 +113,6 @@ def get_brussels_events_for_llm(category: str) -> str:
 def get_brussels_events(category: str) -> str:
     """Legacy function - now redirects to LLM-optimized version."""
     return get_brussels_events_for_llm(category)
+
+
+print(get_brussels_events_for_llm("concert"))  # Test fetch on module load

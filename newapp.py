@@ -2,6 +2,7 @@ import os
 import threading
 from flask import Flask, render_template, request, jsonify
 from newAgent import NewAgent
+from testAgent import testAgent
 from recommender import SocialRecommender
 from like_handler import handle_like
 from dotenv import load_dotenv
@@ -26,7 +27,7 @@ threading.Thread(target=warmup_cache, daemon=True).start()
 
 # Initialize Agent
 try:
-    agent = NewAgent()
+    agent = testAgent()
     print("✅ Agent initialized successfully")
 except Exception as e:
     print(f"❌ Error initializing agent: {e}")

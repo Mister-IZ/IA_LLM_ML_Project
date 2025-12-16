@@ -1,13 +1,13 @@
 import os
 from dotenv import load_dotenv
 from codecarbon import EmissionsTracker
-from newAgent import NewAgent
+from testAgent import testAgent
 from agent import SocialAgentLangChain
 
 
 
 
-agent = NewAgent()
+agent = testAgent()
 
 # Use the agent normally - EcoLogits tracks in the background
 questions = [
