@@ -220,6 +220,40 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         
         return self._format_response_to_html(result, ml_category)
 
+    def _build_events_text(self, events: List[Dict], ml_category: str, total_events: int) -> str:
+        """Construit un bloc texte propre à partir des événements structurés du state."""
+        # On récupère l'emoji de catégorie détecté (sinon 🎯 par défaut)
+        _, emoji, _ = EventFilter.detect_filter_type(self.current_state.get("last_search_query", "") or "")
+        emoji = emoji or '🎯'
+
+        result = f"{emoji} **ACTIVITÉS À BRUXELLES :**\n\n"
+
+        for idx, event in enumerate(events, 1):
+            title = event.get('title') or "Événement"
+            start_date = event.get('start_date') or "Date non précisée"
+            location = event.get('location') or "Lieu non précisé"
+            price = event.get('price') or ("🆓 Gratuit" if event.get('is_free') else "Prix non précisé")
+            url = event.get('url') or ""
+            description = event.get('full_description') or event.get('description') or "Pas de description"
+
+            result += f"{idx}. **{title}**\n"
+            result += f"📅 {start_date}\n"
+            result += f"📍 {location}\n"
+            result += f"💰 {price}\n"
+            if url:
+                result += f"🔗 {url}\n"
+            else:
+                result += "🔗 Lien non disponible\n"
+            result += f"Description: {description}\n"
+            result += f"<!-- CATEGORY:{ml_category} -->\n\n"
+
+        total_pages = max(1, (total_events + 7) // 8)
+        current_page = self.current_state.get("current_page", 1)
+        result += f"\n💬 **{len(events)} activités affichées** (Page {current_page}/{total_pages})\n"
+        result += '<div class="pagination-hint">🔄 Tu veux que je t\' + "'" + 'en propose d\' + "'" + 'autres ? <button class="suggestion-btn pagination-btn" onclick="handlePagination()">👉 Appuie ici</button></div>'
+
+        return result
+
     def chat(self, message_complexe: str) -> str:
         """Interface de chat principale avec gestion intelligente"""
         
@@ -388,17 +422,18 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         
         # S'il n'y a RIEN du tout
         if not all_found_events:
-             return self._format_response_to_html(
+            return self._format_response_to_html(
                 f"❌ Désolé, je n'ai rien trouvé pour '{user_message}' sur aucune plateforme (Brussels, Ticketmaster, EventBrite).",
                 current_context_category
             )
             
         # Mise à jour du STATE GLOBAL (Crucial pour l'affichage HTML)
-        self.current_state["last_displayed_events"] = all_found_events[:8]  # Première page
+        page_events = all_found_events[:8]
+        self.current_state["last_displayed_events"] = page_events  # Première page
         self.current_state["all_filtered_events"] = all_found_events  # TOUS pour pagination locale
         
-        # Combinaison du texte pour le LLM (ou affichage direct)
-        full_content = "\n\n".join(results_text)
+        # Reconstruction propre du texte à partir des événements structurés
+        full_content = self._build_events_text(page_events, current_context_category, len(all_found_events))
         
         # Ajouter les suggestions ML si présentes
         if system_instruction:
