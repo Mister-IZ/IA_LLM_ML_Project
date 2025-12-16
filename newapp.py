@@ -123,7 +123,14 @@ def chat():
     # Basic Chat - The agent now handles ML internally via _detect_category_with_llm
     # No need to inject hidden instructions anymore - it's all in the agent
     try:
-        response = agent.chat(user_msg)
+        # If we have a neighbor archetype from ML engine, pass it as profile tag
+        if user_profile.get("neighbor") and user_profile["neighbor"].get("matched_archetype"):
+            archetype = user_profile["neighbor"].get("matched_archetype")
+            user_msg_to_send = f"[PROFILE:{archetype}] {user_msg}"
+        else:
+            user_msg_to_send = user_msg
+
+        response = agent.chat(user_msg_to_send)
         
         # Sync back agent's updated preferences to user_profile
         if hasattr(agent, 'user_preferences'):

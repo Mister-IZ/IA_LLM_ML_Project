@@ -113,27 +113,49 @@ class NewAgent:
         ]
 
         self.system_prompt = (
-            "You are an event recommendation assistant. Use the 'Unified Events Fetcher' tool to find events. "
-            "This tool returns events from multiple sources. "
+            "You are an event recommendation assistant. IMPORTANT: You MUST reformat all raw event data.\n\n"
+            "WORKFLOW:\n"
+            "1. Use the 'Unified Events Fetcher' tool to find events (returns raw data from multiple sources)\n"
+            "2. Parse the raw results and SELECT the best 5 events\n"
+            "3. REFORMAT EACH EVENT to the exact format below (do not keep raw format!)\n"
+            "4. Return ONLY reformatted events, never raw text\n"
+            "\n"
+            "**SÉLECTION DES ÉVÉNEMENTS :**\n"
+            "- EXACTEMENT 5 événements seulement\n"
+            "- Diversifie : 2 Brussels API + 2 Ticketmaster + 1 EventBrite\n"
+            "- Choisis les plus pertinents et intéressants\n"
+            "- Si moins de 5 disponibles, affiche seulement ceux-là\n"
             "\n\n"
-            "**RÈGLES STRICTES :**\n"
-            "1. Sélectionne EXACTEMENT 5 événements (pas plus, pas moins)\n"
-            "2. Diversifie les sources : 2 Brussels API + 2 Ticketmaster + 1 EventBrite (si possible)\n"
-            "3. Choisis les événements les plus pertinents et intéressants\n"
-            "4. Si moins de 5 événements disponibles, affiche seulement ceux disponibles\n"
-            "\n\n"
-            "**FORMAT DE RÉPONSE STRICT :**\n"
+            "**FORMAT OBLIGATOIRE - ABSOLUMENT À RESPECTER :**\n"
+            "Chaque événement DOIT avoir EXACTEMENT ce format (sinon parsing HTML échoue):\n"
+            "\n"
             "1. **Nom de l'événement**\n"
-            "📅 Date\n"
-            "📍 Lieu\n"
-            "💰 Prix\n"
-            "🔗 Lien (URL complète)\n"
-            "Description: Texte exact\n\n"
-            "**IMPORTANT :**\n"
-            "- Utilise TOUJOURS les emojis (📅, 📍, 💰, 🔗) sur des LIGNES SÉPARÉES\n"
-            "- La Description et le 🔗 Lien DOIVENT être sur des lignes séparées\n"
-            "- Si un lien (URL) est disponible, tu DOIS l'inclure après 🔗\n"
-            "- Garde le texte exact des descriptions sans les raccourcir"
+            "📅 Date (ex: 16 décembre 2025)\n"
+            "📍 Lieu (ex: Palais des Beaux-Arts - Bozar)\n"
+            "💰 Prix (ou 'Gratuit' ou 'Prix non précisé')\n"
+            "🔗 https://[URL-COMPLÈTE-ICI]\n"
+            "Description: [Texte exact et complet de la description]\n"
+            "\n"
+            "**RÈGLES STRICTES DE FORMATAGE :**\n"
+            "✓ CHAQUE emoji sur sa PROPRE LIGNE UNIQUE\n"
+            "✓ JAMAIS deux infos sur la même ligne\n"
+            "✓ JAMAIS le format: '📅 Date - 📍 Lieu' (INTERDIT!)\n"
+            "✓ JAMAIS le format: 'Titre - Date au Lieu' (INTERDIT!)\n"
+            "✓ L'URL après 🔗 DOIT être complète (http:// ou https://)\n"
+            "✓ Une ligne vide entre chaque événement\n"
+            "✓ Description sur UNE SEULE LIGNE (pas de retour à la ligne)\n"
+            "\n"
+            "**✓ BON FORMAT :**\n"
+            "1. **L'inconnu de la grande arche**\n"
+            "📅 16-20 décembre 2025\n"
+            "📍 Cinéma Aventure\n"
+            "💰 Prix non précisé\n"
+            "🔗 https://example.com/film1\n"
+            "Description: Un film sur la construction de la Grande Arche de la Défense.\n"
+            "\n"
+            "**✗ MAUVAIS FORMAT (À ÉVITER!) :**\n"
+            "L'inconnu de la grande arche - Du 16 au 20 décembre 2025 au Cinéma Aventure. Un film sur...\n"
+            "(Pourquoi c'est mauvais: tout sur une ligne, pas parsable!)\n"
         )
 
 
@@ -163,6 +185,16 @@ class NewAgent:
         if any(x in msg for x in ['parc', 'balade', 'calme', 'nature', 'détente', 'promenade']): 
             return "Chill"
         return "Curieux"  # Défaut
+
+    def _extract_profile_tag(self, user_message: str) -> Tuple[str, str]:
+        """Extrait un tag [PROFILE:XXX] au début du message s'il existe."""
+        profile = None
+        cleaned = user_message
+        match = re.match(r"\[PROFILE:([^\]]+)\]\s*(.*)", user_message, flags=re.IGNORECASE)
+        if match:
+            profile = match.group(1).strip()
+            cleaned = match.group(2).strip()
+        return profile, cleaned
 
     def _update_user_preferences(self, category: str, weight: float = 0.2):
         """
@@ -305,6 +337,37 @@ Description: [Description]"""
         
         return enhanced
 
+    def _force_reformat_with_llm(self, raw_text: str) -> str:
+        """Force le reformatage en demandant au LLM de réécrire au format strict (max 5 événements)."""
+        if not raw_text:
+            return raw_text
+        prompt = f"""Reformate les événements ci-dessous AU FORMAT STRICT. Ne garde que 5 événements max.
+
+Texte à reformater :
+{raw_text[:5000]}
+
+RÈGLES DE FORMAT (OBLIGATOIRE) :
+1. **Titre**
+📅 Date
+📍 Lieu
+💰 Prix (ou 'Gratuit' / 'Prix non précisé')
+🔗 URL complète (http/https). Si absente, écrire 'Lien non disponible'
+Description: Texte exact et complet
+
+CONTRAINTES :
+- Chaque info sur sa propre ligne (pas deux infos sur la même ligne)
+- Une ligne vide entre chaque événement
+- Pas de puces '❤️' ni tirets en tête de ligne, seulement la numérotation 1., 2., etc.
+- Garde le texte en français
+- Pas d'explications supplémentaires, seulement la liste formatée
+"""
+        try:
+            resp = self.llm.invoke(prompt)
+            return resp.content if hasattr(resp, "content") else str(resp)
+        except Exception as e:
+            print(f"[DEBUG] Reformat LLM failed: {e}")
+            return raw_text
+
     def _format_response_to_html(self, response: str, category_context: str = "General") -> str:
         """Formate la réponse en HTML avec cartes cliquables et boutons Like (Style Agent.py)"""
         if not response:
@@ -437,12 +500,16 @@ Description: [Description]"""
         5. Formatter en HTML
         """
         try:
-            # Step 1: Déduire le profil de l'utilisateur
-            profile = self._detect_profile_context(user_input)
-            print(f"[DEBUG] Profil détecté: {profile}")
+            # Step 0: Profil optionnel passé via tag [PROFILE:XXX]
+            tag_profile, clean_msg = self._extract_profile_tag(user_input)
+            profile = tag_profile or self._detect_profile_context(user_input)
+            print(f"[DEBUG] Profil détecté: {profile} (tag={tag_profile})")
             
             # Step 2: Exécuter l'agent principal pour trouver les événements
-            raw_response = self.agent.run(input=user_input)
+            raw_response = self.agent.run(input=clean_msg)
+            
+            # Step 2.1: Forcer le reformatage par LLM (max 5 événements)
+            raw_response = self._force_reformat_with_llm(raw_response)
             
             # Step 2.5: Vérifier s'il y a une erreur de catégorie
             if "CATEGORY_ERROR:" in raw_response:
@@ -452,7 +519,7 @@ Description: [Description]"""
             enhanced_response = self._add_ml_suggestions_to_response(raw_response, profile)
             
             # Step 4: Formatter en HTML
-            return self._format_response_to_html(enhanced_response, "Music")
+            return self._format_response_to_html(enhanced_response, "General")
             
         except Exception as e:
             print(f"[ERROR] Erreur dans chat(): {e}")
