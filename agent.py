@@ -251,7 +251,7 @@ Sois empathique et naturel dans tes réponses conversationnelles."""
         total_pages = max(1, (total_events + 7) // 8)
         current_page = self.current_state.get("current_page", 1)
         result += f"\n💬 **{len(events)} activités affichées** (Page {current_page}/{total_pages})\n"
-        result += '<div class="pagination-hint">🔄 Tu veux que je t\' + "'" + 'en propose d\' + "'" + 'autres ? <button class="suggestion-btn pagination-btn" onclick="handlePagination()">👉 Appuie ici</button></div>'
+        # result += '<div class="pagination-hint">🔄 Tu veux que je t\' + "'" + 'en propose d\' + "'" + 'autres ? <button class="suggestion-btn pagination-btn" onclick="handlePagination()">👉 Appuie ici</button></div>'
 
         return result
 
