@@ -27,7 +27,7 @@ threading.Thread(target=warmup_cache, daemon=True).start()
 
 # Initialize Agent
 try:
-    agent = testAgent()
+    agent = NewAgent()
     print("✅ Agent initialized successfully")
 except Exception as e:
     print(f"❌ Error initializing agent: {e}")

@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - EVENTBRITE_TOKEN=${EVENTBRITE_TOKEN}
+      - TICKETMASTER_API_KEY=${TICKETMASTER_API_KEY}
+    volumes:
+      - ./emissions.csv:/app/emissions.csv
+    restart: unless-stopped
