@@ -1,7 +1,11 @@
-import os
+import os, sys 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
+load_dotenv()
 from codecarbon import EmissionsTracker
 from testAgent import testAgent
+from newAgent import NewAgent
 from agent import SocialAgentLangChain
 
 
