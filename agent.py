@@ -627,7 +627,7 @@ RAISON: [ta phrase d'explication]"""
                 chosen_event = events[0]
                 reason = f"C'est un bon choix pour un {profile} !"
             
-            content += f"\n\n🤖 **SUGGESTION PERSONNALISÉE ({profile})**\n\n"
+            content += f"\n\n🤖 **SUGGESTION PERSONNALISÉE**\n\n"
             content += f"💡 *{reason}*\n\n"
             content += f"1. **{chosen_event['title']}**\n"
             content += f"📅 {chosen_event['start_date']}\n"
