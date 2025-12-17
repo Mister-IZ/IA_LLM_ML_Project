@@ -4,6 +4,12 @@ FROM python:3.12-slim
 # Définir le répertoire de travail
 WORKDIR /app
 
+# Installer les outils de compilation (nécessaire pour sentence-transformers, scipy, etc.)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copier les dépendances
 COPY requirements.txt .
 
