@@ -218,7 +218,7 @@ Exemple: abc123,def456,ghi789,jkl012,mno345"""
                 best_event = event
         
         return f"""
-        🤖 **SUGGESTION PERSONNALISÉE ({profile})**
+        🤖 **SUGGESTION PERSONNALISÉE **
 💡 *Recommandé spécialement pour vous !*
 
 1. **{best_event['name']}**

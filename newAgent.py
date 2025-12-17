@@ -350,7 +350,7 @@ INSTRUCTION:
 3. RECOPIE l'événement EXACTEMENT comme il est formaté (avec tous les emojis, l'URL complète, etc.)
 
 FORMAT DE RÉPONSE:
-🤖 **SUGGESTION PERSONNALISÉE ({profile})**
+🤖 **SUGGESTION PERSONNALISÉE**
 💡 *[Une phrase courte expliquant le choix]*
 
 1. **[Titre EXACT de l'événement choisi]**
