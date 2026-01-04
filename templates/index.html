@@ -317,7 +317,7 @@
             } catch (error) { typingIndicator.style.display = 'none'; addMessage('❌ Erreur.'); }
         }
 
-        // --- LIKE LOGIC AMÉLIORÉE ---
+        
         let likeInProgress = {}; // Pour éviter les clics multiples
         
         window.toggleLike = async function(event, btn) {
@@ -396,7 +396,6 @@
             const container = document.getElementById('sub-menu-container');
             let html = '';
             
-            // Menu simplifié : catégories générales, pas de genres trop précis
             if (category === 'music') {
                 html = `
                     <button class="menu-btn sub" onclick="sendMenuChoice('Je cherche des concerts')">🎵 Concerts</button>
@@ -431,17 +430,14 @@
             // Remplit la barre de texte et envoie
             messageInput.value = text;
             sendMessage();
-            // Optionnel : on vide le menu après choix pour garder le chat propre
-            // document.getElementById('sub-menu-container').innerHTML = '';
         }
 
-        // --- UTILS ---
         window.toggleEvent = function(element) {
             if (event.target.classList.contains('like-btn')) return;
             element.classList.toggle('active');
         }
         
-        // Debounce pour pagination
+
         let paginationCooldown = false;
         window.handlePagination = function() {
             if (paginationCooldown) {
@@ -451,7 +447,6 @@
             paginationCooldown = true;
             messageInput.value = 'autre';
             sendMessage();
-            // Cooldown de 1.5 secondes
             setTimeout(() => {
                 paginationCooldown = false;
             }, 1500);

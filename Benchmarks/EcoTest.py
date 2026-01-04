@@ -6,7 +6,6 @@ load_dotenv()
 from codecarbon import EmissionsTracker
 from testAgent import testAgent
 from newAgent import NewAgent
-from agent import SocialAgentLangChain
 
 
 
@@ -38,19 +37,3 @@ finally:
     tracker.stop()
 
 
-# agent = SocialAgentLangChain()
-# tracker = EmissionsTracker(project_name="BrusselsEventOldAgent", output_dir=".", on_csv_write="append")
-# tracker.start()
-
-# try: 
-#     for question in questions:
-#         print(f"\nQuestion: {question}")
-#         response = agent.chat(question)
-# finally:
-#     tracker.stop()
-
-
-
-# Note: With LangChain, EcoLogits tracks automatically but the impacts
-# are attached to the underlying API responses, not the agent's response.
-# To see the tracking, check the EcoLogits logs or use a callback.

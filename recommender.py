@@ -46,24 +46,16 @@ class SocialRecommender:
             "matched_archetype": neighbor_data["Archetype"],
             "similarity_score": round(1 - neighbor_dist, 4),
             "recommended_activity_type": neighbor_data["Favorite_Event"] 
-            # Note: On utilise ça comme "Type" d'activité, pas comme événement absolu
         }
 
     def find_routine_breaker(self, user_preferences):
-        """
-        Trouve une activité 'Anti-Routine' basée sur la catégorie la plus faible de l'utilisateur.
-        """
-        # 1. Trouver la catégorie avec le score le plus bas
         lowest_category = min(user_preferences, key=user_preferences.get)
         
-        # 2. Trouver un profil dans le dataset qui est fort dans cette catégorie (> 0.7)
         opposites = self.df[self.df[lowest_category] > 0.7]
         
         if opposites.empty:
-            # Fallback si personne n'est > 0.7
             opposites = self.df[self.df[lowest_category] > 0.5]
             
-        # 3. Choisir un user au hasard dans ces opposés
         if not opposites.empty:
             opposite_user = opposites.sample(1).iloc[0]
             return {

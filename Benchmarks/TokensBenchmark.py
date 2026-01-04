@@ -109,14 +109,3 @@ cost_per_1k = 0.001
 estimated_cost = (token_counter.total_tokens / 1000) * cost_per_1k
 print(f"\n💰 Estimated cost: ${estimated_cost:.4f}")
 
-#Resultats: 
-# Sur 10 questions on a un total de : 30 API calls
-# Total tokens: 115493
-#Prompt tokens: 109642
-#Completion tokens: 5851
-
-#Resultats after cache (16/12/24/22:40):
-#Sur 10 questions: 19 api calls (wtff?)
-# Prompt tokens: 11699
-#Completion tokens 701
-# Total tokens: 13400

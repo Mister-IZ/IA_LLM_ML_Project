@@ -183,10 +183,4 @@ print(answer)
 # Print carbon emissions summary
 carbon_tracker.summary()
 
-#For 1000 tokens:
-# Total energy: 0.000020 kWh
-# Total CO2: 0.000001 kgCO2eq
 
-#Si Mistral LArge:
-# Total energy: 0.000293 kWh
-# Total CO2: 0.000016 kgCO2eq

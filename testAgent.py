@@ -327,33 +327,6 @@ Description: {(event.get('description') or '')[:300]}"""
         
         html_parts.append('</div>')
         return '\n'.join(html_parts)
-        
-            
-        #     # Event title
-        #     if re.match(r'^\d+\.\s+\*\*', line):
-        #         title = re.sub(r'^\d+\.\s+\*\*(.+?)\*\*', r'<strong>\1</strong>', line)
-        #         html_parts.append(f'<div class="event-item">{title}')
-        #     elif line.startswith('📅'):
-        #         html_parts.append(f'<div class="event-detail">{line}</div>')
-        #     elif line.startswith('📍'):
-        #         html_parts.append(f'<div class="event-detail">{line}</div>')
-        #     elif line.startswith('💰'):
-        #         html_parts.append(f'<div class="event-detail">{line}</div>')
-        #     elif line.startswith('🔗'):
-        #         url_match = re.search(r'(https?://[^\s]+)', line)
-        #         if url_match:
-        #             url = url_match.group(1)
-        #             html_parts.append(f'<div class="event-detail"><a href="{url}" target="_blank">🔗 Voir le site</a></div>')
-        #     elif line.startswith('Description:'):
-        #         desc = line.replace('Description:', '').strip()
-        #         html_parts.append(f'<div class="event-description">📝 {desc}</div></div>')
-        #     elif line.startswith('🎲') or line.startswith('🤖'):
-        #         html_parts.append(f'<h3>{line}</h3>')
-        #     elif line.startswith('💡'):
-        #         html_parts.append(f'<p><em>{line}</em></p>')
-        
-        # html_parts.append('</div>')
-        # return '\n'.join(html_parts)
 
     def _is_activity_search(self, message: str) -> bool:
         """Check if it's an activity search - NO LLM."""

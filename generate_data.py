@@ -2,8 +2,7 @@ import pandas as pd
 import numpy as np
 import random
 
-# On définit des "Activités Piliers". 
-# Ce ne sont pas des événements API en temps réel, mais des "Goûts"
+
 ARCHETYPES = {
     "Culturel": {
         "Music": 0.2, "Sport": 0.1, "Cinema": 0.6, "Art": 0.9, "Nature": 0.3, 
@@ -56,15 +55,14 @@ def generate_users(n_users=100):
     data = []
     
     for i in range(n_users):
-        # 1. Choisir un archétype
+        # 1
         archetype_name = random.choice(list(ARCHETYPES.keys()))
         base_vector = ARCHETYPES[archetype_name]
         
-        # 2. Choisir une activité favorite aléatoire parmi celles de l'archétype
+        # 2
         fav_activity = random.choice(base_vector["Fav_Activities"])
         
-        # 3. Créer le vecteur avec un peu de variation (Bruit)
-        # On ajoute du random pour que User_1 ne soit pas identique à User_2
+        # 3
         user_vector = {
             "User_ID": f"User_{i+1}",
             "Archetype": archetype_name, 
